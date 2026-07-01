@@ -1,5 +1,6 @@
-import { CreateDateColumn, Entity, ManyToOne, PrimaryGeneratedColumn, Column } from "typeorm";
+import { CreateDateColumn, Entity, ManyToOne, PrimaryGeneratedColumn, Column, OneToMany } from "typeorm";
 import { User } from "../../user/entities/user.entity";
+import { MealItem } from "../../meal-items/entities/meal-item.entity";
 
 @Entity('meal_plans')
 export class MealPlan {
@@ -18,15 +19,15 @@ export class MealPlan {
   @Column({ nullable: true })
   totalCalories: number;
 
-  @Column({ type: 'jsonb' })
-  planJson: any;
-
   @Column()
   modelUsed: string; // groq / hf
 
-  @Column({ default: 'pending' })
-  generationStatus: string;
+  @Column()
+  generationMethod: 'ai' | 'hybrid_engine';
 
   @CreateDateColumn()
   createdAt: Date;
+
+  @OneToMany(() => MealItem, item => item.mealPlan)
+  items: MealItem[];
 }

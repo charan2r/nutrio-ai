@@ -1,25 +1,27 @@
-import { Entity, ManyToOne, PrimaryGeneratedColumn, Column } from "typeorm";
-import { MealPlan } from "../../meal-plan/entities/meal-plan.entity";
-
+import { MealItem } from '../../meal-items/entities/meal-item.entity';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  OneToMany,
+} from 'typeorm';
 
 @Entity('meals')
 export class Meal {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ManyToOne(() => MealPlan, { onDelete: 'CASCADE' })
-  mealPlan: MealPlan;
-
-  @Column()
-  day: number;
-
-  @Column()
-  mealType: string;
-
   @Column()
   name: string;
 
+  @Column('text')
+  description: string;
+
   @Column()
+  mealType: 'breakfast' | 'lunch' | 'dinner';
+
+  @Column('float')
   calories: number;
 
   @Column('float')
@@ -31,6 +33,28 @@ export class Meal {
   @Column('float')
   fat: number;
 
+  // Constraint system fields
+  @Column('text', { array: true })
+  allergens: string[];
+
+  @Column({ default: false })
+  isVegetarian: boolean;
+
+  @Column()
+  cuisineType: string;
+
+  @Column('float', { nullable: true })
+  estimatedCost: number;
+
+  @Column('text', { array: true })
+  ingredients: string[];
+
   @Column('text')
   recipe: string;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @OneToMany(() => MealItem, item => item.meal)
+  planItems: MealItem[];
 }
