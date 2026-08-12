@@ -9,17 +9,32 @@ import { AllergyModule } from './modules/allergy/allergy.module';
 import { AiModule } from './modules/ai/ai.module';
 import { ProfileModule } from './modules/profile/profile.module';
 import { MealPlanModule } from './modules/meal-plan/meal-plan.module';
-import { MealScoreModule } from './modules/meal-score/meal-score.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { UserPreferencesModule } from './modules/user-preferences/user-preferences.module';
 import { MealItemsModule } from './modules/meal-items/meal-items.module';
+import { MealPlanRequestModule } from './modules/meal-plan-request/meal-plan-request.module';
+import { GroceryListModule } from './modules/grocery-list/grocery-list.module';
 
 @Module({
   controllers: [AppController],
   providers: [AppService],
-  imports:[
+  imports: [
+
     ConfigModule.forRoot({
       isGlobal: true,
-    }), AuthModule, MealModule, UserModule, AllergyModule, AiModule, ProfileModule, MealPlanModule, MealScoreModule, FeedbackModule, UserPreferencesModule, MealItemsModule],
+    }),
+    AuthModule,
+    MealModule,
+    UserModule,
+    AllergyModule,
+    AiModule,
+    ProfileModule,
+    MealPlanModule,
+    FeedbackModule,
+    UserPreferencesModule,
+    MealItemsModule,
+    MealPlanRequestModule,
+    GroceryListModule,
+  ],
 })
-export class AppModule {}
+export class AppModule { }

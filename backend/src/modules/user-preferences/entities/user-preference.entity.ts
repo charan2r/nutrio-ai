@@ -1,33 +1,75 @@
-import { Entity, OneToOne, PrimaryGeneratedColumn, JoinColumn, Column, CreateDateColumn, UpdateDateColumn } from "typeorm";
-import { User } from "../../user/entities/user.entity";
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  JoinColumn,
+  OneToOne,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
+import { User } from '../../user/entities/user.entity';
 
 @Entity('user_preferences')
 export class UserPreference {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @OneToOne(() => User, { onDelete: 'CASCADE' })
-  @JoinColumn()
+  @Column()
+  userId: string;
+
+  @OneToOne(() => User, (user) => user.preference, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'userId' })
   user: User;
 
-  @Column()
+  /** Calculated by backend (BMR/TDEE), not by AI */
+  @Column({ type: 'int' })
   dailyCalorieTarget: number;
 
-  @Column()
-  dietType: 'vegetarian' | 'non_veg';
+  /**
+   * non-veg | vegetarian | vegan | other
+   */
+  @Column({ length: 50, default: 'non-veg' })
+  dietType: string;
 
-  @Column()
-  appetiteLevel: 'low' | 'medium' | 'high';
+  /**
+   * low | medium | high
+   */
+  @Column({ length: 30, default: 'medium' })
+  appetiteLevel: string;
 
-  @Column({ nullable: true })
-  dailyBudget: number;
+  @Column({ type: 'smallint', default: 3 })
+  mealsPerDay: number;
 
-  @Column({ nullable: true })
-  preferredCuisine: string;
+  @Column({ type: 'numeric', precision: 10, scale: 2, nullable: true })
+  dailyBudget: number | null;
 
-  @CreateDateColumn()
+  @Column({ type: 'text', array: true, default: '{}' })
+  preferredCuisines: string[];
+
+  @Column({ type: 'text', array: true, default: '{}' })
+  excludedIngredients: string[];
+
+  @Column({ type: 'text', array: true, default: '{}' })
+  dislikedFoods: string[];
+
+  @Column({ type: 'smallint', nullable: true })
+  maximumPrepMinutes: number | null;
+
+  /**
+   * beginner | intermediate | advanced | null
+   */
+  @Column({ length: 30, nullable: true })
+  cookingSkill: string | null;
+
+  @Column({ type: 'smallint', default: 1 })
+  servings: number;
+
+  @Column({ length: 10, default: 'en' })
+  preferredLanguage: string;
+
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
 }

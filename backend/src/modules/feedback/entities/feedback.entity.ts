@@ -1,30 +1,57 @@
 import {
-    Entity,
-    PrimaryGeneratedColumn,
-    Column,
-    CreateDateColumn,
-    ManyToOne,
-  } from 'typeorm';
+  Column,
+  CreateDateColumn,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+  Unique,
+  UpdateDateColumn,
+} from 'typeorm';
 import { User } from '../../user/entities/user.entity';
-import { Meal } from '../../meal/entities/meal.entity';
+import { MealItem } from '../../meal-items/entities/meal-item.entity';
 
+@Unique(['userId', 'mealItemId'])
 @Entity('feedback')
 export class Feedback {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @Column()
+  userId: string;
+
+  @ManyToOne(() => User, (user) => user.feedbacks, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'userId' })
   user: User;
 
-  @ManyToOne(() => Meal)
-  meal: Meal;
-
   @Column()
-  liked: boolean;
+  mealItemId: string;
 
+  @ManyToOne(() => MealItem, (item) => item.feedbacks, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'mealItemId' })
+  mealItem: MealItem;
+
+  /** Optional: user liked or disliked the meal */
   @Column({ nullable: true })
-  rating: number;
+  liked: boolean | null;
 
-  @CreateDateColumn()
+  /** Optional: 1-5 rating */
+  @Column({ type: 'smallint', nullable: true })
+  rating: number | null;
+
+  @Column({ type: 'text', nullable: true })
+  comment: string | null;
+
+  /**
+   * too_spicy | too_expensive | hard_to_prepare | unavailable_ingredients
+   * | portion_too_small | portion_too_large | disliked_taste
+   */
+  @Column({ type: 'text', array: true, default: '{}' })
+  reasonTags: string[];
+
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
+
+  @UpdateDateColumn({ type: 'timestamptz' })
+  updatedAt: Date;
 }

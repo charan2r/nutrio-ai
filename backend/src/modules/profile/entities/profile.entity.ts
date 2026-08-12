@@ -1,30 +1,59 @@
-import { User } from "../../user/entities/user.entity";
-import { Entity, OneToOne, PrimaryGeneratedColumn, JoinColumn, Column } from "typeorm";
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  JoinColumn,
+  OneToOne,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
+import { User } from '../../user/entities/user.entity';
 
 @Entity('user_profiles')
 export class UserProfile {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @OneToOne(() => User, user => user.profile, { onDelete: 'CASCADE' })
-  @JoinColumn()
+  @Column()
+  userId: string;
+
+  @OneToOne(() => User, (user) => user.profile, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'userId' })
   user: User;
 
-  @Column()
-  age: number;
+  @Column({ type: 'date' })
+  dateOfBirth: string;
 
-  @Column()
-  gender: string;
+  /**
+   * male | female | other
+   */
+  @Column({ length: 20 })
+  biologicalSex: string;
 
-  @Column('float')
+  @Column({ type: 'numeric', precision: 6, scale: 2 })
   heightCm: number;
 
-  @Column('float')
+  @Column({ type: 'numeric', precision: 6, scale: 2 })
   weightKg: number;
 
-  @Column()
+  @Column({ type: 'numeric', precision: 6, scale: 2, nullable: true })
+  targetWeightKg: number | null;
+
+  /**
+   * lose_weight | maintain | gain_weight
+   */
+  @Column({ length: 50 })
   goal: string;
 
-  @Column()
+  /**
+   * sedentary | moderately_active | very_active
+   */
+  @Column({ length: 50 })
   activityLevel: string;
+
+  @CreateDateColumn({ type: 'timestamptz' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ type: 'timestamptz' })
+  updatedAt: Date;
 }
