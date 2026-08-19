@@ -1,9 +1,21 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+/* eslint-disable prettier/prettier */
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+} from '@nestjs/common';
+import { AuthGuard } from '../auth/auth.guard';
 import { MealPlanService } from './meal-plan.service';
 import { CreateMealPlanDto } from './dto/create-meal-plan.dto';
 import { UpdateMealPlanDto } from './dto/update-meal-plan.dto';
 
 @Controller('meal-plan')
+@UseGuards(AuthGuard)
 export class MealPlanController {
   constructor(private readonly mealPlanService: MealPlanService) {}
 
@@ -23,7 +35,10 @@ export class MealPlanController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateMealPlanDto: UpdateMealPlanDto) {
+  update(
+    @Param('id') id: string,
+    @Body() updateMealPlanDto: UpdateMealPlanDto,
+  ) {
     return this.mealPlanService.update(+id, updateMealPlanDto);
   }
 

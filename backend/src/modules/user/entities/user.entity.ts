@@ -19,7 +19,7 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ length: 255 })
+  @Column({ length: 255, unique: true })
   email: string;
 
   @Column()
@@ -31,7 +31,7 @@ export class User {
   @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
 
-  // Relations 
+  // Relations
   @OneToOne(() => UserProfile, (profile) => profile.user)
   profile: UserProfile;
 

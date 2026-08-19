@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from './modules/auth/auth.module';
 import { MealModule } from './modules/meal/meal.module';
 import { UserModule } from './modules/user/user.module';
@@ -19,9 +20,17 @@ import { GroceryListModule } from './modules/grocery-list/grocery-list.module';
   controllers: [AppController],
   providers: [AppService],
   imports: [
-
     ConfigModule.forRoot({
       isGlobal: true,
+    }),
+    TypeOrmModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        type: 'postgres' as const,
+        url: config.getOrThrow<string>('DATABASE_URL'),
+        entities: [__dirname + '/**/*.entity{.ts,.js}'],
+        ssl: { rejectUnauthorized: false },
+      }),
     }),
     AuthModule,
     MealModule,
@@ -37,4 +46,4 @@ import { GroceryListModule } from './modules/grocery-list/grocery-list.module';
     GroceryListModule,
   ],
 })
-export class AppModule { }
+export class AppModule {}
