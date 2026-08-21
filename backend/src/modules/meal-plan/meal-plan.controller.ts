@@ -1,49 +1,18 @@
 /* eslint-disable prettier/prettier */
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Patch,
-  Param,
-  Delete,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
+import { CurrentUser, JwtUser } from '../user/user.decorator';
+import { GenerateMealPlanDto } from './dto/generate-meal-plan.dto';
 import { MealPlanService } from './meal-plan.service';
-import { CreateMealPlanDto } from './dto/create-meal-plan.dto';
-import { UpdateMealPlanDto } from './dto/update-meal-plan.dto';
 
-@Controller('meal-plan')
+@Controller('meal-plans')
 @UseGuards(AuthGuard)
 export class MealPlanController {
   constructor(private readonly mealPlanService: MealPlanService) {}
-
-  @Post()
-  create(@Body() createMealPlanDto: CreateMealPlanDto) {
-    return this.mealPlanService.create(createMealPlanDto);
-  }
-
-  @Get()
-  findAll() {
-    return this.mealPlanService.findAll();
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.mealPlanService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(
-    @Param('id') id: string,
-    @Body() updateMealPlanDto: UpdateMealPlanDto,
+  @Post('generate') generate(
+    @CurrentUser() user: JwtUser,
+    @Body() dto: GenerateMealPlanDto,
   ) {
-    return this.mealPlanService.update(+id, updateMealPlanDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.mealPlanService.remove(+id);
+    return this.mealPlanService.generateForUser(user.id, dto);
   }
 }
