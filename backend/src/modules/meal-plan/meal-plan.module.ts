@@ -9,6 +9,10 @@ import { UserProfile } from '../profile/entities/profile.entity';
 import { UserPreference } from '../user-preferences/entities/user-preference.entity';
 import { MealPlan } from './entities/meal-plan.entity';
 import { MealPlanRequest } from '../meal-plan-request/entities/meal-plan-request.entity';
+import { Meal } from '../meal/entities/meal.entity';
+import { GroceryList } from '../grocery-list/entities/grocery-list.entity';
+import { GroceryListModule } from '../grocery-list/grocery-list.module';
+import { ValidationModule } from '../validation/validation.module';
 import { MealItem } from '../meal-items/entities/meal-item.entity';
 
 @Module({
@@ -20,8 +24,12 @@ import { MealItem } from '../meal-items/entities/meal-item.entity';
       MealPlanRequest,
       MealPlan,
       MealItem,
+      Meal,
+      GroceryList,
     ]),
     AiModule,
+    ValidationModule,
+    GroceryListModule,
   ],
   controllers: [MealPlanController],
   providers: [MealPlanService],

@@ -8,7 +8,8 @@ import { ConfigService } from '@nestjs/config';
 import { MealPlanGenerationContext } from '../meal-plan/meal-plan.service';
 
 type Ingredient = { name: string; quantity: number; unit: string };
-type Meal = {
+export type Meal = {
+  mealId?: string | null;
   mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
   name: string;
   description: string;
@@ -101,9 +102,41 @@ export class AiService {
   }
 
   private buildPrompt(context: MealPlanGenerationContext) {
+    let verifiedMealsSection = '';
+    if (context.verifiedMeals && context.verifiedMeals.length > 0) {
+      verifiedMealsSection = `\nAvailable verified database meals:
+${context.verifiedMeals
+  .map(
+    (m) =>
+      `- ID: "${m.id}", Name: "${m.name}", MealType: "${m.mealType}", Calories: ${m.calories}kcal, Protein: ${m.protein}g, Carbs: ${m.carbs}g, Fat: ${m.fat}g, Cost: LKR ${m.estimatedCostLkr ?? 0}`,
+  )
+  .join('\n')}
+Prefer these verified meals where suitable by setting "mealId" to the meal's ID string and matching its nutrition/ingredients. Set "mealId": null if generating a novel meal.\n`;
+    }
+
     return `Generate a Sri Lankan meal plan. Return JSON only, with no markdown.
-    Context: ${JSON.stringify(context)}. Generate exactly ${context.durationDays} days, numbered 1 through ${context.durationDays}; each has exactly ${context.mealsPerDay} meals.
-    Avoid allergies, exclusions and dislikes; respect diet, LKR budget and prep limit where provided. Required schema: {"days":[{"day":1,"meals":[{"mealType":"breakfast|lunch|dinner|snack","name":"string","description":"string","ingredients":[{"name":"string","quantity":1,"unit":"string"}],"servings":1,"calories":0,"protein":0,"carbs":0,"fat":0,"estimatedCostLkr":0,"prepTimeMinutes":1,"allergens":["string"],"dietTags":["string"],"reason":"string"}]}]}`;
+Context: ${JSON.stringify({
+      age: context.age,
+      biologicalSex: context.biologicalSex,
+      goal: context.goal,
+      activityLevel: context.activityLevel,
+      dailyCalorieTarget: context.dailyCalorieTarget,
+      dietType: context.dietType,
+      mealsPerDay: context.mealsPerDay,
+      dailyBudget: context.dailyBudget,
+      preferredCuisines: context.preferredCuisines,
+      excludedIngredients: context.excludedIngredients,
+      dislikedFoods: context.dislikedFoods,
+      maximumPrepMinutes: context.maximumPrepMinutes,
+      cookingSkill: context.cookingSkill,
+      servings: context.servings,
+      allergies: context.allergies,
+      durationDays: context.durationDays,
+    })}.
+${verifiedMealsSection}
+Generate exactly ${context.durationDays} days, numbered 1 through ${context.durationDays}; each has exactly ${context.mealsPerDay} meals.
+Avoid allergies, exclusions and dislikes; respect diet, LKR budget and prep limit where provided.
+Required schema: {"days":[{"day":1,"meals":[{"mealId":null,"mealType":"breakfast|lunch|dinner|snack","name":"string","description":"string","ingredients":[{"name":"string","quantity":1,"unit":"string"}],"servings":1,"calories":0,"protein":0,"carbs":0,"fat":0,"estimatedCostLkr":0,"prepTimeMinutes":1,"allergens":["string"],"dietTags":["string"],"reason":"string"}]}]}`;
   }
 
   private parseAndValidate(
@@ -171,6 +204,13 @@ function validMeal(value: unknown): value is Meal {
     !Array.isArray(value.dietTags)
   )
     return false;
+  if (
+    value.mealId !== undefined &&
+    value.mealId !== null &&
+    !string(value.mealId)
+  ) {
+    return false;
+  }
   if (
     !['calories', 'protein', 'carbs', 'fat'].every(
       (key) => number(value[key]) && (value[key] as number) >= 0,

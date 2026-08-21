@@ -1,4 +1,3 @@
-/* eslint-disable prettier/prettier */
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
@@ -10,6 +9,27 @@ import { GenerateMealPlanDto } from './dto/generate-meal-plan.dto';
 import { MealPlan } from './entities/meal-plan.entity';
 import { MealPlanRequest } from '../meal-plan-request/entities/meal-plan-request.entity';
 import { MealItem } from '../meal-items/entities/meal-item.entity';
+import { Meal } from '../meal/entities/meal.entity';
+import { GroceryListService } from '../grocery-list/grocery-list.service';
+import {
+  FullPlanValidationResult,
+  MealPlanValidationService,
+} from '../validation/meal-plan-validation.service';
+
+export type VerifiedMealSummary = {
+  id: string;
+  name: string;
+  mealType: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  estimatedCostLkr: number | null;
+  prepTimeMinutes: number | null;
+  allergens: string[];
+  dietTags: string[];
+  ingredients?: any[];
+};
 
 export type MealPlanGenerationContext = {
   age: number;
@@ -33,6 +53,7 @@ export type MealPlanGenerationContext = {
   startDate: string;
   durationDays: number;
   strictCalorieControl: boolean;
+  verifiedMeals?: VerifiedMealSummary[];
 };
 
 @Injectable()
@@ -45,20 +66,150 @@ export class MealPlanService {
     @InjectRepository(Allergy) private readonly allergies: Repository<Allergy>,
     @InjectRepository(MealPlanRequest)
     private readonly requests: Repository<MealPlanRequest>,
+    @InjectRepository(MealPlan)
+    private readonly mealPlanRepository: Repository<MealPlan>,
+    @InjectRepository(Meal)
+    private readonly mealsRepository: Repository<Meal>,
     private readonly dataSource: DataSource,
     private readonly aiService: AiService,
+    private readonly validationService: MealPlanValidationService,
+    private readonly groceryListService: GroceryListService,
   ) {}
 
+  async findAllForUser(userId: string) {
+    const plans = await this.mealPlanRepository.find({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+      relations: ['items', 'groceryList'],
+    });
+
+    return plans.map((plan) => ({
+      id: plan.id,
+      startDate: plan.startDate,
+      endDate: plan.endDate,
+      status: plan.status,
+      qualityScore:
+        plan.qualityScore !== null ? Number(plan.qualityScore) : null,
+      scoreBreakdown: plan.scoreBreakdown,
+      validationSummary: plan.validationSummary,
+      totalCalories:
+        plan.totalCalories !== null ? Number(plan.totalCalories) : null,
+      estimatedCostLkr:
+        plan.estimatedCostLkr !== null ? Number(plan.estimatedCostLkr) : null,
+      itemCount: plan.items?.length ?? 0,
+      hasGroceryList: Boolean(plan.groceryList),
+      createdAt: plan.createdAt,
+    }));
+  }
+
+  async findOneForUser(userId: string, id: string) {
+    const plan = await this.mealPlanRepository.findOne({
+      where: { id, userId },
+      relations: ['items', 'items.meal', 'groceryList'],
+      order: {
+        items: {
+          day: 'ASC',
+        },
+      },
+    });
+
+    if (!plan) {
+      throw new NotFoundException(`Meal plan with ID ${id} not found`);
+    }
+
+    return {
+      id: plan.id,
+      startDate: plan.startDate,
+      endDate: plan.endDate,
+      status: plan.status,
+      qualityScore:
+        plan.qualityScore !== null ? Number(plan.qualityScore) : null,
+      scoreBreakdown: plan.scoreBreakdown,
+      validationSummary: plan.validationSummary,
+      totalCalories:
+        plan.totalCalories !== null ? Number(plan.totalCalories) : null,
+      totalProtein:
+        plan.totalProtein !== null ? Number(plan.totalProtein) : null,
+      totalCarbs: plan.totalCarbs !== null ? Number(plan.totalCarbs) : null,
+      totalFat: plan.totalFat !== null ? Number(plan.totalFat) : null,
+      estimatedCostLkr:
+        plan.estimatedCostLkr !== null ? Number(plan.estimatedCostLkr) : null,
+      generationMethod: plan.generationMethod,
+      provider: plan.provider,
+      modelUsed: plan.modelUsed,
+      generationMeta: plan.generationMeta,
+      createdAt: plan.createdAt,
+      updatedAt: plan.updatedAt,
+      mealItems: plan.items || [],
+      groceryList: plan.groceryList || null,
+    };
+  }
+
   async generateForUser(userId: string, dto: GenerateMealPlanDto) {
-    const [profile, preferences, allergies] = await Promise.all([
+    const [profile, preferences, allergies, verifiedMealsDb] = await Promise.all([
       this.profiles.findOneBy({ userId }),
       this.preferences.findOneBy({ userId }),
       this.allergies.find({ where: { userId } }),
+      this.mealsRepository.find({
+        where: {
+          nutritionVerificationStatus: 'verified',
+          isActive: true,
+        },
+      }),
     ]);
     if (!profile || !preferences)
       throw new NotFoundException(
         'Complete your profile and preferences before generating a meal plan',
       );
+
+    const userAllergens = [
+      ...allergies.map((a) => a.allergen),
+      ...(preferences.excludedIngredients || []),
+    ].map((a) => a.toLowerCase().trim());
+
+    const userDiet = (preferences.dietType || 'non-veg').toLowerCase().trim();
+
+    // Filter verified meals shortlist matching user's diet and allergies
+    const suitableVerifiedMeals: VerifiedMealSummary[] = verifiedMealsDb
+      .filter((m) => {
+        const mealAllergens = (m.allergens || []).map((a) =>
+          a.toLowerCase().trim(),
+        );
+        const hasAllergenConflict = userAllergens.some((ua) =>
+          mealAllergens.some((ma) => ma.includes(ua) || ua.includes(ma)),
+        );
+        if (hasAllergenConflict) return false;
+
+        if (userDiet === 'vegetarian') {
+          const tags = (m.dietTags || []).map((t) => t.toLowerCase());
+          if (!tags.includes('vegetarian') && !tags.includes('vegan')) {
+            return false;
+          }
+        } else if (userDiet === 'vegan') {
+          const tags = (m.dietTags || []).map((t) => t.toLowerCase());
+          if (!tags.includes('vegan')) {
+            return false;
+          }
+        }
+        return true;
+      })
+      .slice(0, 15)
+      .map((m) => ({
+        id: m.id,
+        name: m.name,
+        mealType: m.mealType,
+        calories: Number(m.calories),
+        protein: Number(m.protein),
+        carbs: Number(m.carbs),
+        fat: Number(m.fat),
+        estimatedCostLkr:
+          m.estimatedCostLkr !== null ? Number(m.estimatedCostLkr) : null,
+        prepTimeMinutes: m.prepTimeMinutes,
+        allergens: m.allergens || [],
+        dietTags: m.dietTags || [],
+        ingredients: m.ingredients as any[],
+      }));
+
     const context: MealPlanGenerationContext = {
       age: this.calculateAge(profile.dateOfBirth),
       biologicalSex: profile.biologicalSex,
@@ -84,7 +235,9 @@ export class MealPlanService {
       startDate: dto.startDate,
       durationDays: dto.durationDays ?? 7,
       strictCalorieControl: dto.strictCalorieControl ?? false,
+      verifiedMeals: suitableVerifiedMeals,
     };
+
     // Persist before the provider call so unsuccessful AI attempts remain traceable.
     const request = await this.requests.save(
       this.requests.create({
@@ -99,24 +252,36 @@ export class MealPlanService {
     );
 
     const result = await this.aiService.generateMealPlan(context);
+    const validationResult = this.validationService.validatePlan(
+      result.plan,
+      context,
+    );
+
     const savedPlan = await this.persistGeneratedPlan(
       userId,
       request,
       result.plan,
       result.model,
       result.attempts,
+      validationResult,
+      verifiedMealsDb,
     );
+
     return {
       plan: savedPlan.plan,
       planId: savedPlan.plan.id,
       requestId: request.id,
       items: savedPlan.items,
+      groceryList: savedPlan.groceryList,
       generation: {
         provider: 'groq',
         model: result.model,
         attempts: result.attempts,
       },
-      validation: { structureValid: true, safetyValidated: false },
+      validation: validationResult.validationSummary,
+      qualityScore: validationResult.qualityScore,
+      scoreBreakdown: validationResult.scoreBreakdown,
+      validationDetails: validationResult.details,
     };
   }
 
@@ -126,10 +291,18 @@ export class MealPlanService {
     generatedPlan: Awaited<ReturnType<AiService['generateMealPlan']>>['plan'],
     model: string,
     attempts: number,
+    validationResult: FullPlanValidationResult,
+    verifiedMealsDb: Meal[],
   ) {
+    const verifiedMap = new Map<string, Meal>();
+    for (const vm of verifiedMealsDb) {
+      verifiedMap.set(vm.id, vm);
+    }
+
     return this.dataSource.transaction(async (manager) => {
       const planRepository = manager.getRepository(MealPlan);
       const itemRepository = manager.getRepository(MealItem);
+
       const totals = generatedPlan.days.flatMap((day) => day.meals).reduce(
         (sum, meal) => ({
           calories: sum.calories + meal.calories * meal.servings,
@@ -140,23 +313,22 @@ export class MealPlanService {
         }),
         { calories: 0, protein: 0, carbs: 0, fat: 0, cost: 0 },
       );
+
       const plan = await planRepository.save(
         planRepository.create({
           userId,
           requestId: request.id,
           startDate: request.startDate,
           endDate: this.addDays(request.startDate, request.durationDays - 1),
-          // Full safety/nutrition approval is deliberately deferred to Milestone 3.
-          status: 'validating',
+          status: validationResult.isValid ? 'validated' : 'failed',
           generationMethod: 'ai',
           provider: 'groq',
           modelUsed: model,
           promptVersion: 'v1',
-          validationSummary: {
-            structureValid: true,
-            safetyValidated: false,
-            nutritionVerified: false,
-          },
+          validationSummary: validationResult.validationSummary,
+          qualityScore: validationResult.qualityScore,
+          scoreBreakdown: validationResult.scoreBreakdown,
+          scoreVersion: 'v1',
           totalCalories: totals.calories,
           totalProtein: totals.protein,
           totalCarbs: totals.carbs,
@@ -165,27 +337,71 @@ export class MealPlanService {
           generationMeta: { retryCount: attempts - 1 },
         }),
       );
-      const items = generatedPlan.days.flatMap((day) =>
-        day.meals.map((meal) =>
-          itemRepository.create({
+
+      const itemsToSave = generatedPlan.days.flatMap((day) =>
+        day.meals.map((meal) => {
+          const matchedDbMeal = meal.mealId ? verifiedMap.get(meal.mealId) : null;
+          const isVerified = Boolean(matchedDbMeal);
+
+          return itemRepository.create({
             mealPlanId: plan.id,
             day: day.day,
             mealType: meal.mealType,
-            mealId: null,
-            generatedMealSnapshot: meal,
+            mealId: matchedDbMeal ? matchedDbMeal.id : null,
+            generatedMealSnapshot: isVerified ? null : meal,
             servings: meal.servings,
-            caloriesSnapshot: meal.calories,
-            proteinSnapshot: meal.protein,
-            carbsSnapshot: meal.carbs,
-            fatSnapshot: meal.fat,
-            estimatedCostSnapshot: meal.estimatedCostLkr ?? null,
-            nutritionVerificationStatus: 'unverified',
-            selectionExplanation: { reason: meal.reason },
+            caloriesSnapshot: isVerified
+              ? Number(matchedDbMeal!.calories)
+              : meal.calories,
+            proteinSnapshot: isVerified
+              ? Number(matchedDbMeal!.protein)
+              : meal.protein,
+            carbsSnapshot: isVerified
+              ? Number(matchedDbMeal!.carbs)
+              : meal.carbs,
+            fatSnapshot: isVerified ? Number(matchedDbMeal!.fat) : meal.fat,
+            estimatedCostSnapshot: isVerified
+              ? matchedDbMeal!.estimatedCostLkr !== null
+                ? Number(matchedDbMeal!.estimatedCostLkr)
+                : null
+              : meal.estimatedCostLkr ?? null,
+            nutritionVerificationStatus: isVerified ? 'verified' : 'unverified',
+            nutritionSource: isVerified ? 'database' : null,
+            selectionExplanation: {
+              reason: meal.reason,
+              allergens: meal.allergens,
+              dietTags: meal.dietTags,
+              isReusedVerifiedMeal: isVerified,
+            },
             status: 'scheduled',
-          }),
-        ),
+          });
+        }),
       );
-      return { plan, items: await itemRepository.save(items) };
+
+      const savedItems = await itemRepository.save(itemsToSave);
+
+      // Generate and save Grocery List
+      const allMealsForGrocery = generatedPlan.days.flatMap((day) =>
+        day.meals.map((meal) => {
+          const matchedDbMeal = meal.mealId ? verifiedMap.get(meal.mealId) : null;
+          return {
+            name: meal.name,
+            servings: meal.servings,
+            ingredients: matchedDbMeal
+              ? (matchedDbMeal.ingredients as any[]) || meal.ingredients
+              : meal.ingredients,
+            estimatedCostLkr: meal.estimatedCostLkr,
+          };
+        }),
+      );
+
+      const groceryList = await this.groceryListService.generateForPlan(
+        plan.id,
+        allMealsForGrocery,
+        manager,
+      );
+
+      return { plan, items: savedItems, groceryList };
     });
   }
 
