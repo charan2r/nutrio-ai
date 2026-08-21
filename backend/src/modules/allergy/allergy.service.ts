@@ -1,26 +1,42 @@
-import { Injectable } from '@nestjs/common';
+/* eslint-disable prettier/prettier */
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { CreateAllergyDto } from './dto/create-allergy.dto';
-import { UpdateAllergyDto } from './dto/update-allergy.dto';
+import { Allergy } from './entities/allergy.entity';
 
 @Injectable()
 export class AllergyService {
-  create(createAllergyDto: CreateAllergyDto) {
-    return 'This action adds a new allergy';
+  constructor(
+    @InjectRepository(Allergy) private readonly allergies: Repository<Allergy>,
+  ) {}
+
+  findForUser(userId: string) {
+    return this.allergies.find({
+      where: { userId },
+      order: { allergen: 'ASC' },
+    });
   }
 
-  findAll() {
-    return `This action returns all allergy`;
+  async createForUser(userId: string, dto: CreateAllergyDto) {
+    try {
+      return await this.allergies.save(
+        this.allergies.create({ userId, allergen: dto.allergen.trim() }),
+      );
+    } catch (error) {
+      if ((error as { code?: string }).code === '23505') {
+        throw new ConflictException('This allergy already exists');
+      }
+      throw error;
+    }
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} allergy`;
-  }
-
-  update(id: number, updateAllergyDto: UpdateAllergyDto) {
-    return `This action updates a #${id} allergy`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} allergy`;
+  async removeForUser(userId: string, id: string) {
+    const result = await this.allergies.delete({ id, userId });
+    if (!result.affected) throw new NotFoundException('Allergy not found');
   }
 }

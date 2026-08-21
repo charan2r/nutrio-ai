@@ -1,46 +1,33 @@
 /* eslint-disable prettier/prettier */
 import {
-  Controller,
-  Get,
-  Post,
   Body,
-  Patch,
-  Param,
+  Controller,
   Delete,
+  Get,
+  HttpCode,
+  Param,
+  Post,
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
+import { CurrentUser, JwtUser } from '../user/user.decorator';
 import { AllergyService } from './allergy.service';
 import { CreateAllergyDto } from './dto/create-allergy.dto';
-import { UpdateAllergyDto } from './dto/update-allergy.dto';
 
-@Controller('allergy')
+@Controller('allergies')
 @UseGuards(AuthGuard)
 export class AllergyController {
   constructor(private readonly allergyService: AllergyService) {}
-
-  @Post()
-  create(@Body() createAllergyDto: CreateAllergyDto) {
-    return this.allergyService.create(createAllergyDto);
+  @Get() get(@CurrentUser() user: JwtUser) {
+    return this.allergyService.findForUser(user.id);
   }
-
-  @Get()
-  findAll() {
-    return this.allergyService.findAll();
+  @Post() create(@CurrentUser() user: JwtUser, @Body() dto: CreateAllergyDto) {
+    return this.allergyService.createForUser(user.id, dto);
   }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.allergyService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateAllergyDto: UpdateAllergyDto) {
-    return this.allergyService.update(+id, updateAllergyDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.allergyService.remove(+id);
+  @Delete(':id') @HttpCode(204) remove(
+    @CurrentUser() user: JwtUser,
+    @Param('id') id: string,
+  ) {
+    return this.allergyService.removeForUser(user.id, id);
   }
 }

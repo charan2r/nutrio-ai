@@ -1,46 +1,17 @@
-/* eslint-disable prettier/prettier */
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Patch,
-  Param,
-  Delete,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Get, Put, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
-import { ProfileService } from './profile.service';
+import { CurrentUser, JwtUser } from '../user/user.decorator';
 import { CreateProfileDto } from './dto/create-profile.dto';
-import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ProfileService } from './profile.service';
 
 @Controller('profile')
 @UseGuards(AuthGuard)
 export class ProfileController {
   constructor(private readonly profileService: ProfileService) {}
-
-  @Post()
-  create(@Body() createProfileDto: CreateProfileDto) {
-    return this.profileService.create(createProfileDto);
+  @Get() get(@CurrentUser() user: JwtUser) {
+    return this.profileService.findForUser(user.id);
   }
-
-  @Get()
-  findAll() {
-    return this.profileService.findAll();
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.profileService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateProfileDto: UpdateProfileDto) {
-    return this.profileService.update(+id, updateProfileDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.profileService.remove(+id);
+  @Put() put(@CurrentUser() user: JwtUser, @Body() dto: CreateProfileDto) {
+    return this.profileService.upsertForUser(user.id, dto);
   }
 }

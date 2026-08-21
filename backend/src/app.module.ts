@@ -15,6 +15,7 @@ import { UserPreferencesModule } from './modules/user-preferences/user-preferenc
 import { MealItemsModule } from './modules/meal-items/meal-items.module';
 import { MealPlanRequestModule } from './modules/meal-plan-request/meal-plan-request.module';
 import { GroceryListModule } from './modules/grocery-list/grocery-list.module';
+import { OnboardingModule } from './modules/onboarding/onboarding.module';
 
 @Module({
   controllers: [AppController],
@@ -44,6 +45,7 @@ import { GroceryListModule } from './modules/grocery-list/grocery-list.module';
     MealItemsModule,
     MealPlanRequestModule,
     GroceryListModule,
+    OnboardingModule,
   ],
 })
 export class AppModule {}

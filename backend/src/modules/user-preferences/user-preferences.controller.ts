@@ -1,51 +1,21 @@
 /* eslint-disable prettier/prettier */
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Patch,
-  Param,
-  Delete,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Get, Put, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
-import { UserPreferencesService } from './user-preferences.service';
+import { CurrentUser, JwtUser } from '../user/user.decorator';
 import { CreateUserPreferenceDto } from './dto/create-user-preference.dto';
-import { UpdateUserPreferenceDto } from './dto/update-user-preference.dto';
+import { UserPreferencesService } from './user-preferences.service';
 
-@Controller('user-preferences')
+@Controller('preferences')
 @UseGuards(AuthGuard)
 export class UserPreferencesController {
-  constructor(
-    private readonly userPreferencesService: UserPreferencesService,
-  ) {}
-
-  @Post()
-  create(@Body() createUserPreferenceDto: CreateUserPreferenceDto) {
-    return this.userPreferencesService.create(createUserPreferenceDto);
+  constructor(private readonly preferencesService: UserPreferencesService) {}
+  @Get() get(@CurrentUser() user: JwtUser) {
+    return this.preferencesService.findForUser(user.id);
   }
-
-  @Get()
-  findAll() {
-    return this.userPreferencesService.findAll();
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.userPreferencesService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(
-    @Param('id') id: string,
-    @Body() updateUserPreferenceDto: UpdateUserPreferenceDto,
+  @Put() put(
+    @CurrentUser() user: JwtUser,
+    @Body() dto: CreateUserPreferenceDto,
   ) {
-    return this.userPreferencesService.update(+id, updateUserPreferenceDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.userPreferencesService.remove(+id);
+    return this.preferencesService.upsertForUser(user.id, dto);
   }
 }
