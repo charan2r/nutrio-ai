@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -47,18 +47,99 @@ export function NutrioGenerate({ onBack }: { onBack?: () => void } = {}) {
   const { user } = useAuthStore();
 
   // Settings States
-  const [startDate, setStartDate] = useState<string>('May 18, 2025');
+  const [startDate, setStartDate] = useState<string>('Today');
   const [durationDays, setDurationDays] = useState<number>(7);
   const [calorieTarget, setCalorieTarget] = useState<number>(1480);
   const [strictCalorieControl, setStrictCalorieControl] = useState<boolean>(true);
 
+  // Preference Summary States from Backend
+  const [goal, setGoal] = useState<string>('Weight Management');
+  const [budget, setBudget] = useState<number>(420);
+  const [dietType, setDietType] = useState<string>('Balanced (Vegetarian leaning)');
+  const [allergiesText, setAllergiesText] = useState<string>('None');
+  const [preferredFoodsText, setPreferredFoodsText] = useState<string>(
+    'Paneer, Lentils, Quinoa, Oats, Bananas'
+  );
+  const [avoidedFoodsText, setAvoidedFoodsText] = useState<string>(
+    'Mushrooms, Olives'
+  );
+
   // Loading & Generation State
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [generatedPlan, setGeneratedPlan] = useState<any>(null);
   const [showGeneratedPlan, setShowGeneratedPlan] = useState<boolean>(false);
   const [activeModal, setActiveModal] = useState<string | null>(null);
 
+  // Fetch initial profile & preferences
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const [profileRes, prefRes, allergyRes] = await Promise.allSettled([
+          apiClient.get('/profile'),
+          apiClient.get('/preferences'),
+          apiClient.get('/allergies'),
+        ]);
+
+        if (profileRes.status === 'fulfilled' && profileRes.value.data) {
+          const p = profileRes.value.data;
+          if (p.dailyCalorieTarget) {
+            setCalorieTarget(Math.round(Number(p.dailyCalorieTarget)));
+          }
+          if (p.goal) {
+            const goalMap: { [k: string]: string } = {
+              weight_loss: 'Weight Loss',
+              muscle_gain: 'Muscle Gain',
+              maintenance: 'Weight Management',
+              general_health: 'General Health',
+              energy: 'Higher Energy',
+            };
+            setGoal(goalMap[p.goal] || p.goal);
+          }
+        }
+
+        if (prefRes.status === 'fulfilled' && prefRes.value.data) {
+          const pr = prefRes.value.data;
+          if (pr.dailyBudget) {
+            setBudget(Math.round(Number(pr.dailyBudget)));
+          }
+          if (pr.dietType) {
+            const dietMap: { [k: string]: string } = {
+              balanced: 'Balanced (Vegetarian leaning)',
+              vegetarian: 'Vegetarian',
+              vegan: 'Vegan',
+              high_protein: 'High Protein',
+              low_carb: 'Low Carb',
+            };
+            setDietType(dietMap[pr.dietType] || pr.dietType);
+          }
+          if (Array.isArray(pr.preferredCuisines) && pr.preferredCuisines.length) {
+            setPreferredFoodsText(pr.preferredCuisines.join(', '));
+          }
+          if (Array.isArray(pr.excludedIngredients) && pr.excludedIngredients.length) {
+            setAvoidedFoodsText(pr.excludedIngredients.join(', '));
+          }
+        }
+
+        if (allergyRes.status === 'fulfilled' && Array.isArray(allergyRes.value.data)) {
+          const list = allergyRes.value.data.map((a: any) => a.allergen);
+          if (list.length) setAllergiesText(list.join(', '));
+        }
+      } catch (err) {
+        console.log('Error loading initial profile data for generator:', err);
+      }
+    }
+
+    loadData();
+  }, []);
+
   if (showGeneratedPlan) {
-    return <NutrioPlan onBack={() => setShowGeneratedPlan(false)} />;
+    return (
+      <NutrioPlan
+        planData={generatedPlan}
+        planId={generatedPlan?.id}
+        onBack={() => setShowGeneratedPlan(false)}
+      />
+    );
   }
 
   const handleGeneratePlan = async () => {
@@ -74,6 +155,7 @@ export function NutrioGenerate({ onBack }: { onBack?: () => void } = {}) {
       };
 
       const response = await apiClient.post('/meal-plans/generate', payload);
+      setGeneratedPlan(response.data);
 
       Alert.alert(
         'Plan Generated! 🎉',
@@ -239,28 +321,28 @@ export function NutrioGenerate({ onBack }: { onBack?: () => void } = {}) {
           <View style={styles.prefRow}>
             <MaterialCommunityIcons name="sprout" size={18} color={COLORS.brand} />
             <Text style={styles.prefLabel}>Diet Preference</Text>
-            <Text style={styles.prefValue} numberOfLines={1}>Balanced (Vegetarian leaning)</Text>
+            <Text style={styles.prefValue} numberOfLines={1}>{dietType}</Text>
           </View>
 
           {/* Allergies */}
           <View style={styles.prefRow}>
             <MaterialCommunityIcons name="shield-check-outline" size={18} color={COLORS.brand} />
             <Text style={styles.prefLabel}>Allergies</Text>
-            <Text style={styles.prefValue} numberOfLines={1}>None</Text>
+            <Text style={styles.prefValue} numberOfLines={1}>{allergiesText}</Text>
           </View>
 
           {/* Foods You Prefer */}
           <View style={styles.prefRow}>
             <Ionicons name="heart-outline" size={18} color={COLORS.brand} />
             <Text style={styles.prefLabel}>Foods You Prefer</Text>
-            <Text style={styles.prefValue} numberOfLines={1}>Paneer, Lentils, Quinoa, Oats, Bananas</Text>
+            <Text style={styles.prefValue} numberOfLines={1}>{preferredFoodsText}</Text>
           </View>
 
           {/* Foods You Avoid */}
           <View style={[styles.prefRow, { marginBottom: 0 }]}>
             <MaterialCommunityIcons name="close-circle-outline" size={18} color={COLORS.brand} />
             <Text style={styles.prefLabel}>Foods You Avoid</Text>
-            <Text style={styles.prefValue} numberOfLines={1}>Mushrooms, Olives</Text>
+            <Text style={styles.prefValue} numberOfLines={1}>{avoidedFoodsText}</Text>
           </View>
         </View>
 
@@ -272,7 +354,7 @@ export function NutrioGenerate({ onBack }: { onBack?: () => void } = {}) {
               <MaterialCommunityIcons name="target" size={17} color="#0284c7" />
             </View>
             <Text style={styles.miniLabel}>Goals</Text>
-            <Text style={styles.miniValue}>Weight Management</Text>
+            <Text style={styles.miniValue}>{goal}</Text>
             <Text style={styles.miniSubtitle} numberOfLines={1}>Feel active & energetic</Text>
           </View>
 
@@ -282,7 +364,7 @@ export function NutrioGenerate({ onBack }: { onBack?: () => void } = {}) {
               <MaterialCommunityIcons name="wallet-outline" size={17} color={COLORS.iconColorGreen} />
             </View>
             <Text style={styles.miniLabel}>Budget</Text>
-            <Text style={styles.miniValue}>₹420 / week</Text>
+            <Text style={styles.miniValue}>₹{budget} / week</Text>
             <Text style={styles.miniSubtitle}>of ₹700</Text>
           </View>
 
@@ -292,7 +374,7 @@ export function NutrioGenerate({ onBack }: { onBack?: () => void } = {}) {
               <MaterialCommunityIcons name="leaf" size={17} color={COLORS.iconColorGreen} />
             </View>
             <Text style={styles.miniLabel}>Diet</Text>
-            <Text style={styles.miniValue}>Balanced</Text>
+            <Text style={styles.miniValue}>{dietType.split(' ')[0]}</Text>
             <Text style={styles.miniSubtitle} numberOfLines={1}>Vegetarian leaning</Text>
           </View>
         </View>

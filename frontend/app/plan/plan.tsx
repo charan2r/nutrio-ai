@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Image,
   Pressable,
@@ -16,6 +17,7 @@ import {
   MaterialCommunityIcons,
 } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { apiClient } from '@/lib/api-client';
 
 const COLORS = {
   brand: '#438e3b',
@@ -42,7 +44,7 @@ type MealData = {
   iconType: 'feather' | 'ionicons' | 'material';
 };
 
-const day1Meals: MealData[] = [
+const defaultDay1Meals: MealData[] = [
   {
     type: 'Breakfast',
     name: 'Berry Oats Bowl',
@@ -81,7 +83,7 @@ const day1Meals: MealData[] = [
   },
 ];
 
-const day2Meals: MealData[] = [
+const defaultDay2Meals: MealData[] = [
   {
     type: 'Breakfast',
     name: 'Berry Smoothie Bowl',
@@ -120,16 +122,68 @@ const day2Meals: MealData[] = [
   },
 ];
 
-export function NutrioPlan({ onBack }: { onBack?: () => void } = {}) {
+export function NutrioPlan({
+  planId,
+  planData,
+  onBack,
+}: {
+  planId?: string;
+  planData?: any;
+  onBack?: () => void;
+} = {}) {
   const router = useRouter();
   const [selectedDay, setSelectedDay] = useState<string>('Day 1');
+  const [qualityScore, setQualityScore] = useState<number>(92);
+  const [estBudget, setEstBudget] = useState<number>(2940);
+  const [avgCalories, setAvgCalories] = useState<number>(1842);
+  const [avgProtein, setAvgProtein] = useState<number>(92);
+  const [avgCarbs, setAvgCarbs] = useState<number>(208);
+  const [avgFats, setAvgFats] = useState<number>(64);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   const days = ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5', 'Day 6', 'Day 7'];
+
+  // Load plan from backend if available
+  useEffect(() => {
+    async function fetchPlan() {
+      if (planData) {
+        applyPlanData(planData);
+        return;
+      }
+      try {
+        setIsLoading(true);
+        if (planId) {
+          const res = await apiClient.get(`/meal-plans/${planId}`);
+          if (res.data) applyPlanData(res.data);
+        } else {
+          const res = await apiClient.get('/meal-plans');
+          if (Array.isArray(res.data) && res.data.length > 0) {
+            applyPlanData(res.data[0]);
+          }
+        }
+      } catch (err) {
+        console.log('Error fetching meal plan detail:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    fetchPlan();
+  }, [planId, planData]);
+
+  const applyPlanData = (p: any) => {
+    if (p.qualityScore) setQualityScore(Math.round(Number(p.qualityScore)));
+    if (p.estimatedCostLkr) setEstBudget(Math.round(Number(p.estimatedCostLkr)));
+    if (p.totalCalories) setAvgCalories(Math.round(Number(p.totalCalories) / (p.durationDays || 7)));
+    if (p.totalProtein) setAvgProtein(Math.round(Number(p.totalProtein) / (p.durationDays || 7)));
+    if (p.totalCarbs) setAvgCarbs(Math.round(Number(p.totalCarbs) / (p.durationDays || 7)));
+    if (p.totalFat) setAvgFats(Math.round(Number(p.totalFat) / (p.durationDays || 7)));
+  };
 
   const handleSharePlan = async () => {
     try {
       await Share.share({
-        message: 'Check out my 7-day personalized meal plan from Nutrio AI! 🌱',
+        message: `Check out my 7-day personalized meal plan (Quality Score: ${qualityScore}/100) from Nutrio AI! 🌱`,
       });
     } catch {
       Alert.alert('Share Plan', 'Meal plan link copied to clipboard.');
@@ -196,13 +250,13 @@ export function NutrioPlan({ onBack }: { onBack?: () => void } = {}) {
             Your 7-Day Meal Plan{' '}
             <MaterialCommunityIcons name="sprout" size={20} color={COLORS.brand} />
           </Text>
-          <Text style={styles.heroSubtitle}>Generated on May 20, 2025</Text>
+          <Text style={styles.heroSubtitle}>Generated with AI Nutrition Engine</Text>
         </View>
 
         {/* AI Quality Score Card */}
         <View style={styles.scoreCard}>
           <View style={styles.scoreRing}>
-            <Text style={styles.scoreNumber}>92</Text>
+            <Text style={styles.scoreNumber}>{qualityScore}</Text>
             <Text style={styles.scoreTotal}>/100</Text>
           </View>
 
@@ -273,7 +327,7 @@ export function NutrioPlan({ onBack }: { onBack?: () => void } = {}) {
                 <MaterialCommunityIcons name="wallet-outline" size={12} color={COLORS.brand} />
                 <Text style={styles.nutritionLabel}>Est. Budget</Text>
               </View>
-              <Text style={styles.nutritionValue}>₹2,940</Text>
+              <Text style={styles.nutritionValue}>₹{estBudget.toLocaleString()}</Text>
               <Text style={styles.nutritionSub}>of ₹3,000</Text>
             </View>
 
@@ -283,7 +337,7 @@ export function NutrioPlan({ onBack }: { onBack?: () => void } = {}) {
                 <MaterialCommunityIcons name="fire" size={12} color="#f97316" />
                 <Text style={styles.nutritionLabel}>Calories <Text style={{ fontSize: 8.5 }}>(avg)</Text></Text>
               </View>
-              <Text style={styles.nutritionValue}>1,842</Text>
+              <Text style={styles.nutritionValue}>{avgCalories.toLocaleString()}</Text>
               <Text style={styles.nutritionSub}>kcal/day</Text>
             </View>
 
@@ -293,7 +347,7 @@ export function NutrioPlan({ onBack }: { onBack?: () => void } = {}) {
                 <MaterialCommunityIcons name="arm-flex" size={12} color={COLORS.brand} />
                 <Text style={styles.nutritionLabel}>Protein <Text style={{ fontSize: 8.5 }}>(avg)</Text></Text>
               </View>
-              <Text style={styles.nutritionValue}>92g</Text>
+              <Text style={styles.nutritionValue}>{avgProtein}g</Text>
               <Text style={styles.nutritionSub}>21% kcal</Text>
             </View>
 
@@ -303,7 +357,7 @@ export function NutrioPlan({ onBack }: { onBack?: () => void } = {}) {
                 <MaterialCommunityIcons name="barley" size={12} color="#eab308" />
                 <Text style={styles.nutritionLabel}>Carbs <Text style={{ fontSize: 8.5 }}>(avg)</Text></Text>
               </View>
-              <Text style={styles.nutritionValue}>208g</Text>
+              <Text style={styles.nutritionValue}>{avgCarbs}g</Text>
               <Text style={styles.nutritionSub}>45% kcal</Text>
             </View>
 
@@ -313,7 +367,7 @@ export function NutrioPlan({ onBack }: { onBack?: () => void } = {}) {
                 <MaterialCommunityIcons name="water" size={12} color="#0ea5e9" />
                 <Text style={styles.nutritionLabel}>Fats <Text style={{ fontSize: 8.5 }}>(avg)</Text></Text>
               </View>
-              <Text style={styles.nutritionValue}>64g</Text>
+              <Text style={styles.nutritionValue}>{avgFats}g</Text>
               <Text style={styles.nutritionSub}>34% kcal</Text>
             </View>
           </View>
@@ -365,7 +419,7 @@ export function NutrioPlan({ onBack }: { onBack?: () => void } = {}) {
 
           {/* 4 Meal Cards Grid */}
           <View style={styles.mealCardsGrid}>
-            {day1Meals.map((meal) => (
+            {defaultDay1Meals.map((meal) => (
               <Pressable
                 key={meal.type}
                 style={({ pressed }) => [styles.mealCard, pressed && { opacity: 0.9 }]}
@@ -403,7 +457,7 @@ export function NutrioPlan({ onBack }: { onBack?: () => void } = {}) {
 
           {/* 4 Meal Cards Grid */}
           <View style={styles.mealCardsGrid}>
-            {day2Meals.map((meal) => (
+            {defaultDay2Meals.map((meal) => (
               <Pressable
                 key={meal.type}
                 style={({ pressed }) => [styles.mealCard, pressed && { opacity: 0.9 }]}
