@@ -3,12 +3,12 @@ import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
 const DEFAULT_API_URL = Platform.select({
-  android: 'http://10.0.2.2:3000',
-  ios: 'http://localhost:3000',
-  default: 'http://localhost:3000',
+  android: 'http://10.0.2.2:3000/api',
+  ios: 'http://localhost:3000/api',
+  default: 'http://localhost:3000/api',
 });
 
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || DEFAULT_API_URL;
 
 export const TOKEN_KEY = 'nutrio_access_token';
 export const REFRESH_TOKEN_KEY = 'nutrio_refresh_token';
