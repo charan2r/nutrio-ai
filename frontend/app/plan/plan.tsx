@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
   Pressable,
   ScrollView,
   Share,
@@ -34,92 +35,35 @@ const COLORS = {
   chevron: '#9aa5b1',
 };
 
-type MealData = {
+type FormattedMeal = {
+  id?: string;
   type: string;
   name: string;
   calories: string;
+  caloriesNum: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  cost: number | null;
+  prepTime: number | null;
+  description: string;
+  ingredients: Array<{ name: string; quantity: number; unit: string }>;
+  allergens: string[];
+  dietTags: string[];
+  reason: string;
   image: any;
   icon: string;
   iconColor: string;
   iconType: 'feather' | 'ionicons' | 'material';
 };
 
-const defaultDay1Meals: MealData[] = [
-  {
-    type: 'Breakfast',
-    name: 'Berry Oats Bowl',
-    calories: '420 kcal',
-    image: require('@/assets/images/food1.png'),
-    icon: 'sun',
-    iconColor: '#f59e0b',
-    iconType: 'feather',
-  },
-  {
-    type: 'Lunch',
-    name: 'Quinoa Power Bowl',
-    calories: '620 kcal',
-    image: require('@/assets/images/food2.png'),
-    icon: 'sunny-outline',
-    iconColor: '#f59e0b',
-    iconType: 'ionicons',
-  },
-  {
-    type: 'Dinner',
-    name: 'Lemon Salmon',
-    calories: '560 kcal',
-    image: require('@/assets/images/food3.png'),
-    icon: 'moon',
-    iconColor: '#7c3aed',
-    iconType: 'ionicons',
-  },
-  {
-    type: 'Snack',
-    name: 'Greek Yogurt & Nuts',
-    calories: '220 kcal',
-    image: require('@/assets/images/food4.png'),
-    icon: 'leaf',
-    iconColor: '#438e3b',
-    iconType: 'material',
-  },
-];
-
-const defaultDay2Meals: MealData[] = [
-  {
-    type: 'Breakfast',
-    name: 'Berry Smoothie Bowl',
-    calories: '380 kcal',
-    image: require('@/assets/images/food5.png'),
-    icon: 'sun',
-    iconColor: '#f59e0b',
-    iconType: 'feather',
-  },
-  {
-    type: 'Lunch',
-    name: 'Veggie Avocado Wrap',
-    calories: '540 kcal',
-    image: require('@/assets/images/food6.png'),
-    icon: 'sunny-outline',
-    iconColor: '#f59e0b',
-    iconType: 'ionicons',
-  },
-  {
-    type: 'Dinner',
-    name: 'Herb Chicken Bowl',
-    calories: '590 kcal',
-    image: require('@/assets/images/food3.png'),
-    icon: 'moon',
-    iconColor: '#7c3aed',
-    iconType: 'ionicons',
-  },
-  {
-    type: 'Snack',
-    name: 'Apple & Peanut Butter',
-    calories: '190 kcal',
-    image: require('@/assets/images/food4.png'),
-    icon: 'leaf',
-    iconColor: '#438e3b',
-    iconType: 'material',
-  },
+const FOOD_IMAGES = [
+  require('@/assets/images/food1.png'),
+  require('@/assets/images/food2.png'),
+  require('@/assets/images/food3.png'),
+  require('@/assets/images/food4.png'),
+  require('@/assets/images/food5.png'),
+  require('@/assets/images/food6.png'),
 ];
 
 export function NutrioPlan({
@@ -132,18 +76,18 @@ export function NutrioPlan({
   onBack?: () => void;
 } = {}) {
   const router = useRouter();
-  const [selectedDay, setSelectedDay] = useState<string>('Day 1');
-  const [qualityScore, setQualityScore] = useState<number>(92);
-  const [estBudget, setEstBudget] = useState<number>(2940);
-  const [avgCalories, setAvgCalories] = useState<number>(1842);
-  const [avgProtein, setAvgProtein] = useState<number>(92);
-  const [avgCarbs, setAvgCarbs] = useState<number>(208);
-  const [avgFats, setAvgFats] = useState<number>(64);
+  const [selectedDay, setSelectedDay] = useState<number>(1);
+  const [qualityScore, setQualityScore] = useState<number>(90);
+  const [estBudget, setEstBudget] = useState<number>(0);
+  const [avgCalories, setAvgCalories] = useState<number>(2000);
+  const [avgProtein, setAvgProtein] = useState<number>(75);
+  const [avgCarbs, setAvgCarbs] = useState<number>(220);
+  const [avgFats, setAvgFats] = useState<number>(55);
+  const [totalDays, setTotalDays] = useState<number>(3);
+  const [mealsByDay, setMealsByDay] = useState<{ [day: number]: FormattedMeal[] }>({});
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [selectedMealDetail, setSelectedMealDetail] = useState<FormattedMeal | null>(null);
 
-  const days = ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5', 'Day 6', 'Day 7'];
-
-  // Load plan from backend if available
   useEffect(() => {
     async function fetchPlan() {
       if (planData) {
@@ -152,13 +96,16 @@ export function NutrioPlan({
       }
       try {
         setIsLoading(true);
-        if (planId) {
-          const res = await apiClient.get(`/meal-plans/${planId}`);
+        const targetId = planId;
+        if (targetId) {
+          const res = await apiClient.get(`/meal-plans/${targetId}`);
           if (res.data) applyPlanData(res.data);
         } else {
           const res = await apiClient.get('/meal-plans');
           if (Array.isArray(res.data) && res.data.length > 0) {
-            applyPlanData(res.data[0]);
+            const firstId = res.data[0].id;
+            const fullRes = await apiClient.get(`/meal-plans/${firstId}`);
+            applyPlanData(fullRes.data || res.data[0]);
           }
         }
       } catch (err) {
@@ -172,18 +119,112 @@ export function NutrioPlan({
   }, [planId, planData]);
 
   const applyPlanData = (p: any) => {
-    if (p.qualityScore) setQualityScore(Math.round(Number(p.qualityScore)));
-    if (p.estimatedCostLkr) setEstBudget(Math.round(Number(p.estimatedCostLkr)));
-    if (p.totalCalories) setAvgCalories(Math.round(Number(p.totalCalories) / (p.durationDays || 7)));
-    if (p.totalProtein) setAvgProtein(Math.round(Number(p.totalProtein) / (p.durationDays || 7)));
-    if (p.totalCarbs) setAvgCarbs(Math.round(Number(p.totalCarbs) / (p.durationDays || 7)));
-    if (p.totalFat) setAvgFats(Math.round(Number(p.totalFat) / (p.durationDays || 7)));
+    const rawPlan = p.plan || p;
+    const items: any[] =
+      p.items || p.mealItems || rawPlan.items || rawPlan.mealItems || [];
+
+    const qs = rawPlan.qualityScore ?? p.qualityScore ?? 88;
+    setQualityScore(Math.round(Number(qs)));
+
+    const cost = rawPlan.estimatedCostLkr ?? p.estimatedCostLkr ?? 0;
+    setEstBudget(Math.round(Number(cost)));
+
+    // Group items by day
+    const grouped: { [day: number]: FormattedMeal[] } = {};
+    let maxDayFromItems = 0;
+
+    items.forEach((item, idx) => {
+      const d = Number(item.day) || 1;
+      if (d > maxDayFromItems) maxDayFromItems = d;
+      if (!grouped[d]) grouped[d] = [];
+
+      const snap = item.generatedMealSnapshot || item.meal || {};
+      const mealType = item.mealType || snap.mealType || 'lunch';
+      const capType = mealType.charAt(0).toUpperCase() + mealType.slice(1);
+
+      const calories = Math.round(Number(item.caloriesSnapshot ?? snap.calories ?? 500));
+      const protein = Math.round(Number(item.proteinSnapshot ?? snap.protein ?? 25));
+      const carbs = Math.round(Number(item.carbsSnapshot ?? snap.carbs ?? 60));
+      const fat = Math.round(Number(item.fatSnapshot ?? snap.fat ?? 15));
+      const itemCost = item.estimatedCostSnapshot ?? snap.estimatedCostLkr ?? null;
+      const prepTime = snap.prepTimeMinutes ?? null;
+
+      let icon = 'sunny-outline';
+      let iconColor = '#f59e0b';
+      let iconType: 'feather' | 'ionicons' | 'material' = 'ionicons';
+
+      if (mealType.toLowerCase() === 'breakfast') {
+        icon = 'sun';
+        iconColor = '#f59e0b';
+        iconType = 'feather';
+      } else if (mealType.toLowerCase() === 'dinner') {
+        icon = 'moon';
+        iconColor = '#7c3aed';
+        iconType = 'ionicons';
+      } else if (mealType.toLowerCase() === 'snack') {
+        icon = 'leaf';
+        iconColor = '#438e3b';
+        iconType = 'material';
+      }
+
+      grouped[d].push({
+        id: item.id || `meal-${idx}`,
+        type: capType,
+        name: snap.name || item.name || 'Sri Lankan Meal',
+        calories: `${calories} kcal`,
+        caloriesNum: calories,
+        protein,
+        carbs,
+        fat,
+        cost: itemCost ? Math.round(Number(itemCost)) : null,
+        prepTime,
+        description: snap.description || snap.name || 'Balanced nutritious meal',
+        ingredients: Array.isArray(snap.ingredients) ? snap.ingredients : [],
+        allergens: Array.isArray(snap.allergens) ? snap.allergens : [],
+        dietTags: Array.isArray(snap.dietTags) ? snap.dietTags : [],
+        reason: snap.reason || item.selectionExplanation?.reason || 'Nutritious balanced meal',
+        image: FOOD_IMAGES[idx % FOOD_IMAGES.length],
+        icon,
+        iconColor,
+        iconType,
+      });
+    });
+
+    let dateDuration = 0;
+    if (rawPlan.startDate && rawPlan.endDate) {
+      const s = new Date(rawPlan.startDate).getTime();
+      const e = new Date(rawPlan.endDate).getTime();
+      if (!isNaN(s) && !isNaN(e) && e >= s) {
+        dateDuration = Math.round((e - s) / (1000 * 60 * 60 * 24)) + 1;
+      }
+    }
+
+    const dayCount = Math.max(maxDayFromItems, dateDuration, 1);
+    setTotalDays(dayCount);
+    setMealsByDay(grouped);
+
+    const totalCals = rawPlan.totalCalories ?? p.totalCalories;
+    if (totalCals) {
+      setAvgCalories(Math.round(Number(totalCals) / (dayCount || 1)));
+    }
+    const totalProt = rawPlan.totalProtein ?? p.totalProtein;
+    if (totalProt) {
+      setAvgProtein(Math.round(Number(totalProt) / (dayCount || 1)));
+    }
+    const totalC = rawPlan.totalCarbs ?? p.totalCarbs;
+    if (totalC) {
+      setAvgCarbs(Math.round(Number(totalC) / (dayCount || 1)));
+    }
+    const totalF = rawPlan.totalFat ?? p.totalFat;
+    if (totalF) {
+      setAvgFats(Math.round(Number(totalF) / (dayCount || 1)));
+    }
   };
 
   const handleSharePlan = async () => {
     try {
       await Share.share({
-        message: `Check out my 7-day personalized meal plan (Quality Score: ${qualityScore}/100) from Nutrio AI! 🌱`,
+        message: `Check out my ${totalDays}-day personalized meal plan (Quality Score: ${qualityScore}/100) from Nutrio AI! 🌱`,
       });
     } catch {
       Alert.alert('Share Plan', 'Meal plan link copied to clipboard.');
@@ -200,15 +241,20 @@ export function NutrioPlan({
     }
   };
 
-  const renderMealIcon = (meal: MealData) => {
+  const renderMealIcon = (meal: FormattedMeal) => {
     if (meal.iconType === 'feather') {
-      return <Feather name={meal.icon as any} size={11} color={meal.iconColor} />;
+      return <Feather name={meal.icon as any} size={12} color={meal.iconColor} />;
     }
     if (meal.iconType === 'ionicons') {
-      return <Ionicons name={meal.icon as any} size={11} color={meal.iconColor} />;
+      return <Ionicons name={meal.icon as any} size={12} color={meal.iconColor} />;
     }
-    return <MaterialCommunityIcons name={meal.icon as any} size={11} color={meal.iconColor} />;
+    return <MaterialCommunityIcons name={meal.icon as any} size={12} color={meal.iconColor} />;
   };
+
+  const currentDayMeals = mealsByDay[selectedDay] || [];
+  const currentDayCalories = currentDayMeals.reduce((acc, m) => acc + m.caloriesNum, 0);
+
+  const dayNumbers = Array.from({ length: totalDays }, (_, i) => i + 1);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -216,292 +262,364 @@ export function NutrioPlan({
       <View style={styles.bgBlobTopRight} pointerEvents="none" />
       <View style={styles.bgBlobBottomLeft} pointerEvents="none" />
 
-      <ScrollView
-        style={styles.screen}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Top App Bar with Back, Logo & Share */}
-        <View style={styles.topBar}>
-          <View style={styles.topLeftGroup}>
-            <Pressable style={styles.backButton} onPress={handleBack} hitSlop={8}>
-              <Ionicons name="arrow-back" size={20} color={COLORS.heading} />
-            </Pressable>
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.brand} />
+          <Text style={styles.loadingText}>Loading meal plan...</Text>
+        </View>
+      ) : (
+        <ScrollView
+          style={styles.screen}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Top App Bar with Back, Logo & Share */}
+          <View style={styles.topBar}>
+            <View style={styles.topLeftGroup}>
+              <Pressable style={styles.backButton} onPress={handleBack} hitSlop={8}>
+                <Ionicons name="arrow-back" size={20} color={COLORS.heading} />
+              </Pressable>
 
-            <View style={styles.brandRow}>
-              <View style={styles.brandMark}>
-                <MaterialCommunityIcons name="leaf" size={20} color={COLORS.brand} />
+              <View style={styles.brandRow}>
+                <View style={styles.brandMark}>
+                  <MaterialCommunityIcons name="leaf" size={20} color={COLORS.brand} />
+                </View>
+                <Text style={styles.brandName}>
+                  Nutrio <Text style={styles.brandNameAccent}>AI</Text>
+                </Text>
               </View>
-              <Text style={styles.brandName}>
-                Nutrio <Text style={styles.brandNameAccent}>AI</Text>
+            </View>
+
+            <Pressable style={styles.sharePill} onPress={handleSharePlan}>
+              <Ionicons name="share-outline" size={15} color={COLORS.heading} />
+              <Text style={styles.sharePillText}>Share Plan</Text>
+            </Pressable>
+          </View>
+
+          {/* Hero Title */}
+          <View style={styles.heroSection}>
+            <Text style={styles.heroTitle}>
+              Your {totalDays}-Day Meal Plan{' '}
+              <MaterialCommunityIcons name="sprout" size={20} color={COLORS.brand} />
+            </Text>
+            <Text style={styles.heroSubtitle}>Generated with AI Nutrition Engine</Text>
+          </View>
+
+          {/* AI Quality Score Card */}
+          <View style={styles.scoreCard}>
+            <View style={styles.scoreRing}>
+              <Text style={styles.scoreNumber}>{qualityScore}</Text>
+              <Text style={styles.scoreTotal}>/100</Text>
+            </View>
+
+            <View style={styles.scoreInfo}>
+              <Text style={styles.scoreTitle}>
+                {qualityScore >= 80 ? 'Excellent Plan! 🌟' : 'Personalized Plan 🌱'}
+              </Text>
+              <Text style={styles.scoreDesc}>
+                Calorie targets balanced with authentic Sri Lankan recipes and grocery integration.
+              </Text>
+
+              <View style={styles.scoreBadge}>
+                <Ionicons name="sparkles" size={12} color="#2e7d32" />
+                <Text style={styles.scoreBadgeText}>AI Quality Score</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* 4 Metric Badges Row */}
+          <View style={styles.metricRow}>
+            {/* Meets Goals */}
+            <View style={styles.metricCard}>
+              <View style={styles.metricHeader}>
+                <Ionicons name="checkmark-circle" size={13} color="#22c55e" />
+                <Text style={styles.metricLabel}>Meets Goals</Text>
+              </View>
+              <Text style={styles.metricValue}>
+                {totalDays}/{totalDays} <Text style={styles.metricUnit}>days</Text>
+              </Text>
+            </View>
+
+            {/* High Variety */}
+            <View style={styles.metricCard}>
+              <View style={styles.metricHeader}>
+                <MaterialCommunityIcons name="leaf" size={13} color={COLORS.brand} />
+                <Text style={styles.metricLabel}>Variety</Text>
+              </View>
+              <Text style={styles.metricValue}>
+                {Object.values(mealsByDay).flat().length} <Text style={styles.metricUnit}>meals</Text>
+              </Text>
+            </View>
+
+            {/* Balanced */}
+            <View style={styles.metricCard}>
+              <View style={styles.metricHeader}>
+                <MaterialCommunityIcons name="scale-balance" size={13} color="#0ea5e9" />
+                <Text style={styles.metricLabel}>Balanced</Text>
+              </View>
+              <Text style={styles.metricValue}>All macros</Text>
+            </View>
+
+            {/* High Fiber */}
+            <View style={styles.metricCard}>
+              <View style={styles.metricHeader}>
+                <MaterialCommunityIcons name="wallet-outline" size={13} color={COLORS.brand} />
+                <Text style={styles.metricLabel}>Est. Cost</Text>
+              </View>
+              <Text style={styles.metricValue}>
+                LKR {estBudget.toLocaleString()}
               </Text>
             </View>
           </View>
 
-          <Pressable style={styles.sharePill} onPress={handleSharePlan}>
-            <Ionicons name="share-outline" size={15} color={COLORS.heading} />
-            <Text style={styles.sharePillText}>Share Plan</Text>
-          </Pressable>
-        </View>
-
-        {/* Hero Title */}
-        <View style={styles.heroSection}>
-          <Text style={styles.heroTitle}>
-            Your 7-Day Meal Plan{' '}
-            <MaterialCommunityIcons name="sprout" size={20} color={COLORS.brand} />
-          </Text>
-          <Text style={styles.heroSubtitle}>Generated with AI Nutrition Engine</Text>
-        </View>
-
-        {/* AI Quality Score Card */}
-        <View style={styles.scoreCard}>
-          <View style={styles.scoreRing}>
-            <Text style={styles.scoreNumber}>{qualityScore}</Text>
-            <Text style={styles.scoreTotal}>/100</Text>
-          </View>
-
-          <View style={styles.scoreInfo}>
-            <Text style={styles.scoreTitle}>Excellent Plan!</Text>
-            <Text style={styles.scoreDesc}>
-              Great balance of nutrients, variety and calorie distribution.
-            </Text>
-
-            <View style={styles.scoreBadge}>
-              <Ionicons name="sparkles" size={12} color="#2e7d32" />
-              <Text style={styles.scoreBadgeText}>AI Quality Score</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* 4 Metric Badges Row */}
-        <View style={styles.metricRow}>
-          {/* Meets Goals */}
-          <View style={styles.metricCard}>
-            <View style={styles.metricHeader}>
-              <Ionicons name="checkmark-circle" size={13} color="#22c55e" />
-              <Text style={styles.metricLabel}>Meets Goals</Text>
-            </View>
-            <Text style={styles.metricValue}>
-              7/7 <Text style={styles.metricUnit}>days</Text>
-            </Text>
-          </View>
-
-          {/* High Variety */}
-          <View style={styles.metricCard}>
-            <View style={styles.metricHeader}>
-              <MaterialCommunityIcons name="leaf" size={13} color={COLORS.brand} />
-              <Text style={styles.metricLabel}>High Variety</Text>
-            </View>
-            <Text style={styles.metricValue}>
-              32+ <Text style={styles.metricUnit}>foods</Text>
-            </Text>
-          </View>
-
-          {/* Balanced */}
-          <View style={styles.metricCard}>
-            <View style={styles.metricHeader}>
-              <MaterialCommunityIcons name="scale-balance" size={13} color="#0ea5e9" />
-              <Text style={styles.metricLabel}>Balanced</Text>
-            </View>
-            <Text style={styles.metricValue}>All macros</Text>
-          </View>
-
-          {/* High Fiber */}
-          <View style={styles.metricCard}>
-            <View style={styles.metricHeader}>
-              <MaterialCommunityIcons name="leaf" size={13} color={COLORS.brand} />
-              <Text style={styles.metricLabel}>High Fiber</Text>
-            </View>
-            <Text style={styles.metricValue}>
-              28g <Text style={styles.metricUnit}>avg/day</Text>
-            </Text>
-          </View>
-        </View>
-
-        {/* Nutrition Strip / Summary Card */}
-        <View style={styles.nutritionStripCard}>
-          <View style={styles.nutritionColumnsRow}>
-            {/* Est Budget */}
-            <View style={styles.nutritionCol}>
-              <View style={styles.nutritionLabelRow}>
-                <MaterialCommunityIcons name="wallet-outline" size={12} color={COLORS.brand} />
-                <Text style={styles.nutritionLabel}>Est. Budget</Text>
+          {/* Nutrition Summary Strip */}
+          <View style={styles.nutritionStripCard}>
+            <View style={styles.nutritionColumnsRow}>
+              {/* Calories */}
+              <View style={styles.nutritionCol}>
+                <View style={styles.nutritionLabelRow}>
+                  <MaterialCommunityIcons name="fire" size={12} color="#f97316" />
+                  <Text style={styles.nutritionLabel}>Calories (avg)</Text>
+                </View>
+                <Text style={styles.nutritionValue}>{avgCalories.toLocaleString()}</Text>
+                <Text style={styles.nutritionSub}>kcal/day</Text>
               </View>
-              <Text style={styles.nutritionValue}>₹{estBudget.toLocaleString()}</Text>
-              <Text style={styles.nutritionSub}>of ₹3,000</Text>
+
+              {/* Protein */}
+              <View style={styles.nutritionCol}>
+                <View style={styles.nutritionLabelRow}>
+                  <MaterialCommunityIcons name="arm-flex" size={12} color={COLORS.brand} />
+                  <Text style={styles.nutritionLabel}>Protein</Text>
+                </View>
+                <Text style={styles.nutritionValue}>{avgProtein}g</Text>
+                <Text style={styles.nutritionSub}>daily</Text>
+              </View>
+
+              {/* Carbs */}
+              <View style={styles.nutritionCol}>
+                <View style={styles.nutritionLabelRow}>
+                  <MaterialCommunityIcons name="barley" size={12} color="#eab308" />
+                  <Text style={styles.nutritionLabel}>Carbs</Text>
+                </View>
+                <Text style={styles.nutritionValue}>{avgCarbs}g</Text>
+                <Text style={styles.nutritionSub}>daily</Text>
+              </View>
+
+              {/* Fats */}
+              <View style={styles.nutritionCol}>
+                <View style={styles.nutritionLabelRow}>
+                  <MaterialCommunityIcons name="water" size={12} color="#0ea5e9" />
+                  <Text style={styles.nutritionLabel}>Fats</Text>
+                </View>
+                <Text style={styles.nutritionValue}>{avgFats}g</Text>
+                <Text style={styles.nutritionSub}>daily</Text>
+              </View>
             </View>
 
-            {/* Calories */}
-            <View style={styles.nutritionCol}>
-              <View style={styles.nutritionLabelRow}>
-                <MaterialCommunityIcons name="fire" size={12} color="#f97316" />
-                <Text style={styles.nutritionLabel}>Calories <Text style={{ fontSize: 8.5 }}>(avg)</Text></Text>
-              </View>
-              <Text style={styles.nutritionValue}>{avgCalories.toLocaleString()}</Text>
-              <Text style={styles.nutritionSub}>kcal/day</Text>
-            </View>
-
-            {/* Protein */}
-            <View style={styles.nutritionCol}>
-              <View style={styles.nutritionLabelRow}>
-                <MaterialCommunityIcons name="arm-flex" size={12} color={COLORS.brand} />
-                <Text style={styles.nutritionLabel}>Protein <Text style={{ fontSize: 8.5 }}>(avg)</Text></Text>
-              </View>
-              <Text style={styles.nutritionValue}>{avgProtein}g</Text>
-              <Text style={styles.nutritionSub}>21% kcal</Text>
-            </View>
-
-            {/* Carbs */}
-            <View style={styles.nutritionCol}>
-              <View style={styles.nutritionLabelRow}>
-                <MaterialCommunityIcons name="barley" size={12} color="#eab308" />
-                <Text style={styles.nutritionLabel}>Carbs <Text style={{ fontSize: 8.5 }}>(avg)</Text></Text>
-              </View>
-              <Text style={styles.nutritionValue}>{avgCarbs}g</Text>
-              <Text style={styles.nutritionSub}>45% kcal</Text>
-            </View>
-
-            {/* Fats */}
-            <View style={styles.nutritionCol}>
-              <View style={styles.nutritionLabelRow}>
-                <MaterialCommunityIcons name="water" size={12} color="#0ea5e9" />
-                <Text style={styles.nutritionLabel}>Fats <Text style={{ fontSize: 8.5 }}>(avg)</Text></Text>
-              </View>
-              <Text style={styles.nutritionValue}>{avgFats}g</Text>
-              <Text style={styles.nutritionSub}>34% kcal</Text>
+            {/* Accent colored bar */}
+            <View style={styles.stripBarWrapper}>
+              <View style={[styles.stripBarSegment, { backgroundColor: '#438e3b', flex: 1 }]} />
+              <View style={[styles.stripBarSegment, { backgroundColor: '#0d9488', flex: 1.2 }]} />
+              <View style={[styles.stripBarSegment, { backgroundColor: '#0284c7', flex: 1 }]} />
+              <View style={[styles.stripBarSegment, { backgroundColor: '#eab308', flex: 1.8 }]} />
             </View>
           </View>
 
-          {/* Color accent bars at bottom of strip */}
-          <View style={styles.stripBarWrapper}>
-            <View style={[styles.stripBarSegment, { backgroundColor: '#438e3b', flex: 1 }]} />
-            <View style={[styles.stripBarSegment, { backgroundColor: '#0d9488', flex: 1.2 }]} />
-            <View style={[styles.stripBarSegment, { backgroundColor: '#0284c7', flex: 1 }]} />
-            <View style={[styles.stripBarSegment, { backgroundColor: '#eab308', flex: 1.8 }]} />
-            <View style={[styles.stripBarSegment, { backgroundColor: '#38bdf8', flex: 1.2 }]} />
-          </View>
-        </View>
+          {/* Day Selector Tabs */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.dayTabsScroll}
+            contentContainerStyle={styles.dayTabsContainer}
+          >
+            {dayNumbers.map((d) => {
+              const isActive = selectedDay === d;
+              return (
+                <Pressable
+                  key={d}
+                  style={[styles.dayTabPill, isActive && styles.dayTabPillActive]}
+                  onPress={() => setSelectedDay(d)}
+                >
+                  <Text style={[styles.dayTabText, isActive && styles.dayTabTextActive]}>
+                    Day {d}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
 
-        {/* Day Selector Tabs */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.dayTabsScroll}
-          contentContainerStyle={styles.dayTabsContainer}
-        >
-          {days.map((d) => {
-            const isActive = selectedDay === d;
-            return (
-              <Pressable
-                key={d}
-                style={[styles.dayTabPill, isActive && styles.dayTabPillActive]}
-                onPress={() => setSelectedDay(d)}
-              >
-                <Text style={[styles.dayTabText, isActive && styles.dayTabTextActive]}>
-                  {d}
+          {/* Selected Day Meals Section */}
+          <View style={styles.daySection}>
+            <View style={styles.daySectionHeader}>
+              <Text style={styles.daySectionTitle}>
+                Day {selectedDay}{' '}
+                <Text style={styles.daySectionKcal}>
+                  • {currentDayCalories ? `${currentDayCalories.toLocaleString()} kcal` : ''}
                 </Text>
-              </Pressable>
-            );
-          })}
+              </Text>
+              <View style={styles.goalsMetBadge}>
+                <Ionicons name="checkmark-circle" size={13} color="#22c55e" />
+                <Text style={styles.goalsMetText}>Ready</Text>
+              </View>
+            </View>
+
+            {/* Meal Cards Grid */}
+            <View style={styles.mealCardsGrid}>
+              {currentDayMeals.map((meal, idx) => (
+                <Pressable
+                  key={meal.id || idx}
+                  style={({ pressed }) => [styles.mealCard, pressed && { opacity: 0.9 }]}
+                  onPress={() => setSelectedMealDetail(meal)}
+                >
+                  <View style={styles.mealCardTypeHeader}>
+                    {renderMealIcon(meal)}
+                    <Text style={styles.mealCardType}>{meal.type}</Text>
+                  </View>
+
+                  <View style={styles.mealCardImageContainer}>
+                    <Image source={meal.image} style={styles.mealCardImage} resizeMode="cover" />
+                  </View>
+
+                  <Text style={styles.mealCardName} numberOfLines={2}>
+                    {meal.name}
+                  </Text>
+                  <Text style={styles.mealCardKcal}>{meal.calories}</Text>
+                  <Text style={styles.mealCardMacros}>
+                    P: {meal.protein}g • C: {meal.carbs}g • F: {meal.fat}g
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
+          {/* All Days Overview List */}
+          {dayNumbers.length > 1 && (
+            <View style={styles.allDaysContainer}>
+              <Text style={styles.allDaysHeaderTitle}>All Days in this Plan</Text>
+              {dayNumbers.map((dNum) => {
+                const dMeals = mealsByDay[dNum] || [];
+                const dCals = dMeals.reduce((acc, m) => acc + m.caloriesNum, 0);
+                return (
+                  <Pressable
+                    key={dNum}
+                    style={[
+                      styles.dayRowCard,
+                      selectedDay === dNum && styles.dayRowCardActive,
+                    ]}
+                    onPress={() => setSelectedDay(dNum)}
+                  >
+                    <View style={styles.dayRowLeft}>
+                      <View style={styles.dayRowNumberBadge}>
+                        <Text style={styles.dayRowNumberText}>D{dNum}</Text>
+                      </View>
+                      <View>
+                        <Text style={styles.dayRowTitle}>Day {dNum}</Text>
+                        <Text style={styles.dayRowSubtitle}>
+                          {dMeals.map((m) => m.name).join(' • ') || 'Scheduled meals'}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.dayRowRight}>
+                      <Text style={styles.dayRowKcal}>{dCals} kcal</Text>
+                      <Ionicons name="chevron-forward" size={16} color={COLORS.chevron} />
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+
+          {/* Bottom Floating Action Buttons */}
+          <View style={styles.bottomActionsRow}>
+            <Pressable
+              style={({ pressed }) => [styles.planActionsBtn, pressed && { opacity: 0.85 }]}
+              onPress={() => handleSharePlan()}
+            >
+              <MaterialCommunityIcons name="share-variant" size={17} color={COLORS.heading} />
+              <Text style={styles.planActionsBtnText}>Share Plan</Text>
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [styles.adjustPlanBtn, pressed && { opacity: 0.9 }]}
+              onPress={handleBack}
+            >
+              <Feather name="check" size={15} color="#FFFFFF" />
+              <Text style={styles.adjustPlanBtnText}>Done</Text>
+            </Pressable>
+          </View>
         </ScrollView>
+      )}
 
-        {/* Day 1 Section */}
-        <View style={styles.daySection}>
-          <View style={styles.daySectionHeader}>
-            <Text style={styles.daySectionTitle}>
-              Day 1 <Text style={styles.daySectionKcal}>• 2,020 kcal</Text>
-            </Text>
-            <View style={styles.goalsMetBadge}>
-              <Ionicons name="checkmark-circle" size={13} color="#22c55e" />
-              <Text style={styles.goalsMetText}>Goals met</Text>
-            </View>
-          </View>
-
-          {/* 4 Meal Cards Grid */}
-          <View style={styles.mealCardsGrid}>
-            {defaultDay1Meals.map((meal) => (
-              <Pressable
-                key={meal.type}
-                style={({ pressed }) => [styles.mealCard, pressed && { opacity: 0.9 }]}
-                onPress={() => Alert.alert(meal.name, `${meal.type} · ${meal.calories}\nDelicious nutrient-rich recipe.`)}
-              >
-                <View style={styles.mealCardTypeHeader}>
-                  {renderMealIcon(meal)}
-                  <Text style={styles.mealCardType}>{meal.type}</Text>
+      {/* Meal Detail Modal */}
+      <Modal visible={!!selectedMealDetail} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {selectedMealDetail && (
+              <>
+                <View style={styles.modalHeader}>
+                  <View style={styles.modalMealTypeBadge}>
+                    <Text style={styles.modalMealTypeText}>{selectedMealDetail.type}</Text>
+                  </View>
+                  <Pressable
+                    style={styles.modalCloseBtn}
+                    onPress={() => setSelectedMealDetail(null)}
+                  >
+                    <Ionicons name="close" size={20} color="#333" />
+                  </Pressable>
                 </View>
 
-                <View style={styles.mealCardImageContainer}>
-                  <Image source={meal.image} style={styles.mealCardImage} resizeMode="cover" />
+                <Image
+                  source={selectedMealDetail.image}
+                  style={styles.modalImage}
+                  resizeMode="cover"
+                />
+
+                <Text style={styles.modalMealTitle}>{selectedMealDetail.name}</Text>
+                <Text style={styles.modalMealDesc}>{selectedMealDetail.description}</Text>
+
+                {/* Macro Strip */}
+                <View style={styles.modalMacroRow}>
+                  <View style={styles.modalMacroItem}>
+                    <Text style={styles.modalMacroVal}>{selectedMealDetail.calories}</Text>
+                    <Text style={styles.modalMacroLabel}>Calories</Text>
+                  </View>
+                  <View style={styles.modalMacroItem}>
+                    <Text style={styles.modalMacroVal}>{selectedMealDetail.protein}g</Text>
+                    <Text style={styles.modalMacroLabel}>Protein</Text>
+                  </View>
+                  <View style={styles.modalMacroItem}>
+                    <Text style={styles.modalMacroVal}>{selectedMealDetail.carbs}g</Text>
+                    <Text style={styles.modalMacroLabel}>Carbs</Text>
+                  </View>
+                  <View style={styles.modalMacroItem}>
+                    <Text style={styles.modalMacroVal}>{selectedMealDetail.fat}g</Text>
+                    <Text style={styles.modalMacroLabel}>Fats</Text>
+                  </View>
                 </View>
 
-                <Text style={styles.mealCardName} numberOfLines={2}>
-                  {meal.name}
-                </Text>
-                <Text style={styles.mealCardKcal}>{meal.calories}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
+                {/* Ingredients List */}
+                {selectedMealDetail.ingredients.length > 0 && (
+                  <View style={styles.modalIngredientsBox}>
+                    <Text style={styles.modalIngredientsTitle}>Ingredients:</Text>
+                    {selectedMealDetail.ingredients.map((ing, i) => (
+                      <Text key={i} style={styles.modalIngredientItem}>
+                        • {ing.name} ({ing.quantity} {ing.unit})
+                      </Text>
+                    ))}
+                  </View>
+                )}
 
-        {/* Day 2 Section */}
-        <View style={styles.daySection}>
-          <View style={styles.daySectionHeader}>
-            <Text style={styles.daySectionTitle}>
-              Day 2 <Text style={styles.daySectionKcal}>• 1,890 kcal</Text>
-            </Text>
-            <View style={styles.goalsMetBadge}>
-              <Ionicons name="checkmark-circle" size={13} color="#22c55e" />
-              <Text style={styles.goalsMetText}>Goals met</Text>
-            </View>
-          </View>
-
-          {/* 4 Meal Cards Grid */}
-          <View style={styles.mealCardsGrid}>
-            {defaultDay2Meals.map((meal) => (
-              <Pressable
-                key={meal.type}
-                style={({ pressed }) => [styles.mealCard, pressed && { opacity: 0.9 }]}
-                onPress={() => Alert.alert(meal.name, `${meal.type} · ${meal.calories}\nNutritious balanced meal.`)}
-              >
-                <View style={styles.mealCardTypeHeader}>
-                  {renderMealIcon(meal)}
-                  <Text style={styles.mealCardType}>{meal.type}</Text>
-                </View>
-
-                <View style={styles.mealCardImageContainer}>
-                  <Image source={meal.image} style={styles.mealCardImage} resizeMode="cover" />
-                </View>
-
-                <Text style={styles.mealCardName} numberOfLines={2}>
-                  {meal.name}
-                </Text>
-                <Text style={styles.mealCardKcal}>{meal.calories}</Text>
-              </Pressable>
-            ))}
+                <Pressable
+                  style={styles.modalDismissBtn}
+                  onPress={() => setSelectedMealDetail(null)}
+                >
+                  <Text style={styles.modalDismissBtnText}>Close</Text>
+                </Pressable>
+              </>
+            )}
           </View>
         </View>
-
-        {/* Bottom Floating Action Buttons */}
-        <View style={styles.bottomActionsRow}>
-          {/* Plan Actions */}
-          <Pressable
-            style={({ pressed }) => [styles.planActionsBtn, pressed && { opacity: 0.85 }]}
-            onPress={() => Alert.alert('Plan Actions', 'Export PDF, add items to grocery list, or regenerate meals.')}
-          >
-            <MaterialCommunityIcons name="tune-variant" size={17} color={COLORS.heading} />
-            <Text style={styles.planActionsBtnText}>Plan Actions</Text>
-          </Pressable>
-
-          {/* Adjust Plan */}
-          <Pressable
-            style={({ pressed }) => [styles.adjustPlanBtn, pressed && { opacity: 0.9 }]}
-            onPress={() => Alert.alert('Adjust Plan', 'Swap meals or adjust calorie targets for this week.')}
-          >
-            <Feather name="edit-2" size={15} color="#FFFFFF" />
-            <Text style={styles.adjustPlanBtnText}>Adjust Plan</Text>
-          </Pressable>
-        </View>
-      </ScrollView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -513,6 +631,18 @@ const styles = StyleSheet.create({
   },
   screen: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: COLORS.muted,
+    fontWeight: '600',
   },
   bgBlobTopRight: {
     position: 'absolute',
@@ -553,12 +683,12 @@ const styles = StyleSheet.create({
   topLeftGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
   backButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
@@ -571,27 +701,26 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   brandMark: {
-    width: 30,
-    height: 30,
-    borderRadius: 9,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: COLORS.iconBgGreen,
     alignItems: 'center',
     justifyContent: 'center',
   },
   brandName: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: '800',
     color: COLORS.heading,
-    letterSpacing: -0.4,
+    letterSpacing: -0.3,
   },
   brandNameAccent: {
     color: COLORS.brand,
-    fontWeight: '900',
   },
   sharePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 18,
@@ -600,7 +729,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.cardBorder,
   },
   sharePillText: {
-    fontSize: 12.5,
+    fontSize: 12,
     fontWeight: '700',
     color: COLORS.heading,
   },
@@ -610,11 +739,10 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   heroTitle: {
-    fontSize: 22,
+    fontSize: 21,
     fontWeight: '800',
     color: COLORS.heading,
-    lineHeight: 28,
-    letterSpacing: -0.5,
+    letterSpacing: -0.3,
   },
   heroSubtitle: {
     fontSize: 12.5,
@@ -622,43 +750,42 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // AI Quality Score Card
+  // Score Card
   scoreCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 14,
+    backgroundColor: '#EDF6E8',
+    borderRadius: 18,
+    padding: 14,
     marginBottom: 12,
-    shadowColor: '#1a3319',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#dcecd5',
+    gap: 12,
   },
   scoreRing: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    borderWidth: 5.5,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 3,
     borderColor: COLORS.brand,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FAFDF9',
+    shadowColor: COLORS.brand,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   scoreNumber: {
-    fontSize: 23,
-    fontWeight: '800',
-    color: COLORS.heading,
-    letterSpacing: -0.5,
+    fontSize: 19,
+    fontWeight: '900',
+    color: COLORS.brandDark,
+    lineHeight: 22,
   },
   scoreTotal: {
-    fontSize: 10,
-    fontWeight: '600',
+    fontSize: 9,
+    fontWeight: '700',
     color: COLORS.muted,
     marginTop: -2,
   },
@@ -666,73 +793,65 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scoreTitle: {
-    fontSize: 16,
+    fontSize: 14.5,
     fontWeight: '800',
-    color: COLORS.heading,
+    color: COLORS.brandDark,
   },
   scoreDesc: {
-    fontSize: 11.5,
-    color: COLORS.muted,
-    lineHeight: 16,
+    fontSize: 11,
+    color: '#4b5563',
     marginTop: 2,
-    marginBottom: 6,
+    lineHeight: 14,
   },
   scoreBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
     gap: 4,
+    alignSelf: 'flex-start',
+    backgroundColor: '#d8ecd1',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 10,
-    backgroundColor: COLORS.iconBgGreen,
+    marginTop: 6,
   },
   scoreBadgeText: {
-    fontSize: 10.5,
-    fontWeight: '700',
-    color: '#2e7d32',
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: '#285d2b',
   },
 
-  // 4 Metric Badges Row
+  // Metric Badges Row
   metricRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 6,
+    gap: 7,
     marginBottom: 12,
   },
   metricCard: {
     flex: 1,
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
+    padding: 10,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
-    paddingHorizontal: 6,
-    paddingVertical: 8,
-    alignItems: 'center',
-    shadowColor: '#1a3319',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.03,
-    shadowRadius: 3,
-    elevation: 1,
   },
   metricHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-    marginBottom: 3,
+    gap: 4,
+    marginBottom: 4,
   },
   metricLabel: {
-    fontSize: 9.5,
-    fontWeight: '600',
-    color: COLORS.label,
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.muted,
   },
   metricValue: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: '800',
     color: COLORS.heading,
   },
   metricUnit: {
-    fontSize: 9.5,
+    fontSize: 10,
     fontWeight: '500',
     color: COLORS.muted,
   },
@@ -741,23 +860,17 @@ const styles = StyleSheet.create({
   nutritionStripCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 10,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
-    paddingTop: 12,
-    paddingBottom: 0,
     marginBottom: 14,
-    overflow: 'hidden',
-    shadowColor: '#1a3319',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
   },
   nutritionColumnsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingHorizontal: 6,
-    paddingBottom: 10,
+    justifyContent: 'space-between',
+    marginBottom: 10,
   },
   nutritionCol: {
     alignItems: 'center',
@@ -766,77 +879,69 @@ const styles = StyleSheet.create({
   nutritionLabelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2.5,
+    gap: 3,
     marginBottom: 2,
   },
   nutritionLabel: {
-    fontSize: 9.5,
-    fontWeight: '600',
+    fontSize: 10,
+    fontWeight: '700',
     color: COLORS.label,
   },
   nutritionValue: {
-    fontSize: 13,
+    fontSize: 13.5,
     fontWeight: '800',
     color: COLORS.heading,
   },
   nutritionSub: {
-    fontSize: 9,
+    fontSize: 9.5,
     color: COLORS.muted,
     marginTop: 1,
   },
   stripBarWrapper: {
-    flexDirection: 'row',
     height: 4,
-    width: '100%',
+    borderRadius: 2,
+    backgroundColor: '#f3f4f6',
+    flexDirection: 'row',
+    overflow: 'hidden',
+    gap: 2,
   },
   stripBarSegment: {
-    height: 4,
+    height: '100%',
+    borderRadius: 2,
   },
 
-  // Day Selector Tabs
+  // Day Tabs
   dayTabsScroll: {
     marginBottom: 12,
   },
   dayTabsContainer: {
-    gap: 7,
-    paddingRight: 10,
+    flexDirection: 'row',
+    gap: 8,
   },
   dayTabPill: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 7,
-    borderRadius: 16,
+    borderRadius: 20,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
   },
   dayTabPillActive: {
-    backgroundColor: COLORS.brandButton,
-    borderColor: COLORS.brandButton,
+    backgroundColor: COLORS.brandDark,
+    borderColor: COLORS.brandDark,
   },
   dayTabText: {
     fontSize: 12.5,
-    fontWeight: '600',
+    fontWeight: '700',
     color: COLORS.heading,
   },
   dayTabTextActive: {
     color: '#FFFFFF',
-    fontWeight: '700',
   },
 
   // Day Section
   daySection: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    marginBottom: 12,
-    shadowColor: '#1a3319',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
+    marginBottom: 16,
   },
   daySectionHeader: {
     flexDirection: 'row',
@@ -845,83 +950,162 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   daySectionTitle: {
-    fontSize: 14.5,
+    fontSize: 16,
     fontWeight: '800',
     color: COLORS.heading,
   },
   daySectionKcal: {
-    fontSize: 12,
-    fontWeight: '500',
+    fontSize: 13,
+    fontWeight: '600',
     color: COLORS.muted,
   },
   goalsMetBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    backgroundColor: '#eaf7e6',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
   },
   goalsMetText: {
-    fontSize: 11.5,
+    fontSize: 11,
     fontWeight: '700',
     color: '#22c55e',
   },
 
-  // 4 Meal Cards Grid
+  // Meal Cards Grid
   mealCardsGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 6,
+    flexWrap: 'wrap',
+    gap: 10,
   },
   mealCard: {
-    flex: 1,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
+    width: '48%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 10,
     borderWidth: 1,
-    borderColor: '#EEF2F6',
-    padding: 5,
-    alignItems: 'center',
+    borderColor: COLORS.cardBorder,
   },
   mealCardTypeHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-    marginBottom: 4,
+    gap: 4,
+    marginBottom: 6,
   },
   mealCardType: {
-    fontSize: 9.5,
+    fontSize: 11,
     fontWeight: '700',
-    color: COLORS.heading,
+    color: COLORS.muted,
   },
   mealCardImageContainer: {
     width: '100%',
-    height: 52,
-    borderRadius: 8,
+    height: 90,
+    borderRadius: 12,
     overflow: 'hidden',
-    marginBottom: 5,
+    backgroundColor: '#f3f4f6',
+    marginBottom: 6,
   },
   mealCardImage: {
     width: '100%',
     height: '100%',
   },
   mealCardName: {
-    fontSize: 9.5,
-    fontWeight: '700',
+    fontSize: 12.5,
+    fontWeight: '800',
     color: COLORS.heading,
-    textAlign: 'center',
-    lineHeight: 12,
-    minHeight: 24,
+    lineHeight: 16,
+    minHeight: 32,
   },
   mealCardKcal: {
-    fontSize: 8.5,
-    color: COLORS.muted,
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.brand,
     marginTop: 2,
+  },
+  mealCardMacros: {
+    fontSize: 9.5,
+    fontWeight: '600',
+    color: COLORS.muted,
+    marginTop: 1,
+  },
+
+  // All Days Overview
+  allDaysContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    marginBottom: 16,
+    gap: 8,
+  },
+  allDaysHeaderTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: COLORS.heading,
+    marginBottom: 4,
+  },
+  dayRowCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    backgroundColor: '#fafcfa',
+  },
+  dayRowCardActive: {
+    backgroundColor: '#EDF6E8',
+  },
+  dayRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  dayRowNumberBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayRowNumberText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.brandDark,
+  },
+  dayRowTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: COLORS.heading,
+  },
+  dayRowSubtitle: {
+    fontSize: 10.5,
+    color: COLORS.muted,
+    maxWidth: 180,
+  },
+  dayRowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  dayRowKcal: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.heading,
   },
 
   // Bottom Actions
   bottomActionsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     gap: 10,
-    marginTop: 6,
+    marginTop: 4,
   },
   planActionsBtn: {
     flex: 1,
@@ -929,11 +1113,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    height: 48,
-    borderRadius: 16,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
+    paddingVertical: 13,
+    borderRadius: 14,
   },
   planActionsBtnText: {
     fontSize: 13.5,
@@ -941,25 +1125,122 @@ const styles = StyleSheet.create({
     color: COLORS.heading,
   },
   adjustPlanBtn: {
-    flex: 1.4,
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: COLORS.brandButton,
-    shadowColor: COLORS.brandButton,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 3,
+    backgroundColor: COLORS.brandDark,
+    paddingVertical: 13,
+    borderRadius: 14,
   },
   adjustPlanBtnText: {
     fontSize: 13.5,
     fontWeight: '700',
     color: '#FFFFFF',
   },
-});
 
-export default NutrioPlan;
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    padding: 18,
+    maxHeight: '85%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  modalMealTypeBadge: {
+    backgroundColor: COLORS.iconBgGreen,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  modalMealTypeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: COLORS.brandDark,
+  },
+  modalCloseBtn: {
+    padding: 4,
+  },
+  modalImage: {
+    width: '100%',
+    height: 140,
+    borderRadius: 14,
+    marginBottom: 12,
+  },
+  modalMealTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: COLORS.heading,
+    marginBottom: 4,
+  },
+  modalMealDesc: {
+    fontSize: 12,
+    color: COLORS.muted,
+    lineHeight: 16,
+    marginBottom: 12,
+  },
+  modalMacroRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: '#f8faf7',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 12,
+  },
+  modalMacroItem: {
+    alignItems: 'center',
+  },
+  modalMacroVal: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: COLORS.heading,
+  },
+  modalMacroLabel: {
+    fontSize: 9.5,
+    color: COLORS.muted,
+    marginTop: 1,
+  },
+  modalIngredientsBox: {
+    backgroundColor: '#fafbfc',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 14,
+  },
+  modalIngredientsTitle: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: COLORS.heading,
+    marginBottom: 4,
+  },
+  modalIngredientItem: {
+    fontSize: 11,
+    color: '#4b5563',
+    lineHeight: 16,
+  },
+  modalDismissBtn: {
+    backgroundColor: COLORS.brandDark,
+    paddingVertical: 12,
+    borderRadius: 14,
+    alignItems: 'center',
+  },
+  modalDismissBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+});

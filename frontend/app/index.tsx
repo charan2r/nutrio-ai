@@ -1,11 +1,20 @@
 import React from "react";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { useAuthStore } from "@/lib/auth-store";
 import { NutrioLogin } from "./login/nutrio-login";
 import { NutrioPersonalization } from "./personalization/personalization";
 import { NutrioHome } from "./home/home";
 
 export default function HomeScreen() {
-  const { isAuthenticated, isOnboarded } = useAuthStore();
+  const { isAuthenticated, isOnboarded, isLoading } = useAuthStore();
+
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#438e3b" />
+      </View>
+    );
+  }
 
   if (!isAuthenticated) {
     return <NutrioLogin />;
@@ -17,3 +26,12 @@ export default function HomeScreen() {
 
   return <NutrioHome />;
 }
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f7faf5',
+  },
+});

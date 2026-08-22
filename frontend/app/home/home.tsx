@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -40,13 +41,37 @@ const COLORS = {
   bannerBorder: '#d8e8d2',
   progressTrack: '#e8efe6',
   chevron: '#9aa5b1',
+  danger: '#ef4444',
+  dangerBg: '#fef2f2',
+};
+
+const FOOD_IMAGES = [
+  require('@/assets/images/food1.png'),
+  require('@/assets/images/food2.png'),
+  require('@/assets/images/food3.png'),
+  require('@/assets/images/food4.png'),
+  require('@/assets/images/food5.png'),
+  require('@/assets/images/food6.png'),
+];
+
+type TodayMeal = {
+  id: string;
+  type: string;
+  name: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  cost: number | null;
+  image: any;
 };
 
 export function NutrioHome() {
-  const { user } = useAuthStore();
+  const { user, logout } = useAuthStore();
   const [activeTab, setActiveTab] = useState<'home' | 'plans' | 'grocery' | 'profile'>('home');
   const [showPlanDetail, setShowPlanDetail] = useState<boolean>(false);
   const [showFeedback, setShowFeedback] = useState<boolean>(false);
+  const [showProfileDrawer, setShowProfileDrawer] = useState<boolean>(false);
   const [selectedMealForFeedback, setSelectedMealForFeedback] = useState<{
     name: string;
     type: string;
@@ -55,71 +80,135 @@ export function NutrioHome() {
 
   // Dynamic Dashboard State
   const [calorieTarget, setCalorieTarget] = useState<number>(2000);
-  const [caloriesConsumed, setCaloriesConsumed] = useState<number>(1480);
-  const [dailyBudget, setDailyBudget] = useState<number>(700);
-  const [budgetSpent, setBudgetSpent] = useState<number>(420);
-  const [proteinTarget, setProteinTarget] = useState<number>(110);
-  const [proteinConsumed, setProteinConsumed] = useState<number>(72);
+  const [dailyBudget, setDailyBudget] = useState<number>(600);
+  const [proteinTarget, setProteinTarget] = useState<number>(100);
+  const [userGoal, setUserGoal] = useState<string>('Weight Gain');
+  const [userDiet, setUserDiet] = useState<string>('High Protein');
   const [latestPlan, setLatestPlan] = useState<any>(null);
+  const [todaysMeals, setTodaysMeals] = useState<TodayMeal[]>([]);
+  const [completedMealIds, setCompletedMealIds] = useState<{ [id: string]: boolean }>({});
+  const [groceryCount, setGroceryCount] = useState<number>(0);
   const [isLoadingData, setIsLoadingData] = useState<boolean>(false);
 
-  const [completedMeals, setCompletedMeals] = useState<{ [key: string]: boolean }>({
-    breakfast: true,
-    lunch: true,
-    dinner: false,
-  });
+  async function loadDashboardData() {
+    setIsLoadingData(true);
+    try {
+      const [profileRes, prefRes, plansRes] = await Promise.allSettled([
+        apiClient.get('/profile'),
+        apiClient.get('/preferences'),
+        apiClient.get('/meal-plans'),
+      ]);
 
-  // Fetch backend data on mount
-  useEffect(() => {
-    async function loadDashboardData() {
-      setIsLoadingData(true);
-      try {
-        const [profileRes, prefRes, plansRes] = await Promise.allSettled([
-          apiClient.get('/profile'),
-          apiClient.get('/preferences'),
-          apiClient.get('/meal-plans'),
-        ]);
+      let targetCal = 2000;
+      let targetBud = 600;
+      let targetProt = 100;
 
-        if (profileRes.status === 'fulfilled' && profileRes.value.data) {
-          const p = profileRes.value.data;
-          if (p.dailyCalorieTarget) {
-            setCalorieTarget(Math.round(Number(p.dailyCalorieTarget)));
-          }
+      if (profileRes.status === 'fulfilled' && profileRes.value.data) {
+        const p = profileRes.value.data;
+        if (p.dailyCalorieTarget) {
+          targetCal = Math.round(Number(p.dailyCalorieTarget));
         }
-
-        if (prefRes.status === 'fulfilled' && prefRes.value.data) {
-          const pr = prefRes.value.data;
-          if (pr.dailyBudget) {
-            setDailyBudget(Math.round(Number(pr.dailyBudget)));
-          }
+        if (p.goal) {
+          const goalMap: { [k: string]: string } = {
+            weight_loss: 'Weight Loss',
+            lose_weight: 'Weight Loss',
+            gain_weight: 'Weight Gain',
+            muscle_gain: 'Muscle Gain',
+            maintenance: 'Weight Management',
+            general_health: 'General Health',
+          };
+          setUserGoal(goalMap[p.goal] || p.goal.replace(/_/g, ' '));
         }
-
-        if (
-          plansRes.status === 'fulfilled' &&
-          Array.isArray(plansRes.value.data) &&
-          plansRes.value.data.length > 0
-        ) {
-          const p = plansRes.value.data[0];
-          setLatestPlan(p);
-          if (p.totalCalories) {
-            setCalorieTarget(Math.round(p.totalCalories / (p.durationDays || 7)));
-          }
-          if (p.estimatedCostLkr) {
-            setBudgetSpent(Math.round(p.estimatedCostLkr / (p.durationDays || 7)));
-          }
-        }
-      } catch (err) {
-        console.log('Error loading dashboard data:', err);
-      } finally {
-        setIsLoadingData(false);
       }
-    }
 
+      if (prefRes.status === 'fulfilled' && prefRes.value.data) {
+        const pr = prefRes.value.data;
+        if (pr.dailyBudget) {
+          targetBud = Math.round(Number(pr.dailyBudget));
+        }
+        if (pr.dailyCalorieTarget) {
+          targetCal = Math.round(Number(pr.dailyCalorieTarget));
+        }
+        if (pr.dietType) {
+          setUserDiet(pr.dietType.charAt(0).toUpperCase() + pr.dietType.slice(1));
+        }
+      }
+
+      setCalorieTarget(targetCal);
+      setDailyBudget(targetBud);
+
+      if (
+        plansRes.status === 'fulfilled' &&
+        Array.isArray(plansRes.value.data) &&
+        plansRes.value.data.length > 0
+      ) {
+        const firstPlanSummary = plansRes.value.data[0];
+        setLatestPlan(firstPlanSummary);
+
+        // Fetch full plan with its mealItems
+        try {
+          const detailRes = await apiClient.get(`/meal-plans/${firstPlanSummary.id}`);
+          const planDetail = detailRes.data;
+
+          if (planDetail) {
+            setLatestPlan(planDetail);
+
+            const items: any[] = planDetail.items || planDetail.mealItems || [];
+            // Filter Day 1 meals as today's meals
+            const day1Items = items.filter((it: any) => Number(it.day) === 1);
+            const mealsToShow = day1Items.length > 0 ? day1Items : items.slice(0, 3);
+
+            const formatted: TodayMeal[] = mealsToShow.map((it: any, idx: number) => {
+              const snap = it.generatedMealSnapshot || it.meal || {};
+              const mealType = it.mealType || snap.mealType || 'lunch';
+              const capType = mealType.charAt(0).toUpperCase() + mealType.slice(1);
+              const cals = Math.round(Number(it.caloriesSnapshot ?? snap.calories ?? 500));
+              const prot = Math.round(Number(it.proteinSnapshot ?? snap.protein ?? 30));
+              const carbs = Math.round(Number(it.carbsSnapshot ?? snap.carbs ?? 60));
+              const fat = Math.round(Number(it.fatSnapshot ?? snap.fat ?? 15));
+              const cost = it.estimatedCostSnapshot ?? snap.estimatedCostLkr ?? null;
+
+              return {
+                id: it.id || `meal-${idx}`,
+                type: capType,
+                name: snap.name || it.name || 'Sri Lankan Meal',
+                calories: cals,
+                protein: prot,
+                carbs,
+                fat,
+                cost: cost ? Math.round(Number(cost)) : null,
+                image: FOOD_IMAGES[idx % FOOD_IMAGES.length],
+              };
+            });
+
+            setTodaysMeals(formatted);
+
+            // Compute protein target from meals if available
+            const totalDayProtein = formatted.reduce((sum, m) => sum + m.protein, 0);
+            if (totalDayProtein > 0) setProteinTarget(totalDayProtein);
+
+            // Check if grocery list exists
+            if (planDetail.groceryList?.items) {
+              setGroceryCount(planDetail.groceryList.items.length);
+            }
+          }
+        } catch (err) {
+          console.log('Error fetching plan items detail:', err);
+        }
+      }
+    } catch (err) {
+      console.log('Error loading dashboard data:', err);
+    } finally {
+      setIsLoadingData(false);
+    }
+  }
+
+  useEffect(() => {
     loadDashboardData();
   }, []);
 
-  const toggleMealComplete = (key: string) => {
-    setCompletedMeals((prev) => ({ ...prev, [key]: !prev[key] }));
+  const toggleMealComplete = (id: string) => {
+    setCompletedMealIds((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
   const openFeedbackForMeal = (name: string, type: string, calories: number) => {
@@ -127,15 +216,28 @@ export function NutrioHome() {
     setShowFeedback(true);
   };
 
-  const userName = user?.email?.split('@')[0] || 'Charan';
+  const handleLogout = async () => {
+    setShowProfileDrawer(false);
+    await logout();
+  };
+
+  const userName = user?.email?.split('@')[0] || 'User';
   const capitalizedUserName =
     userName.charAt(0).toUpperCase() + userName.slice(1);
 
-  const currentTab: 'home' | 'plans' | 'grocery' | 'profile' = activeTab;
+  // Dynamic calculations based on checked meals
+  const completedList = todaysMeals.filter((m) => completedMealIds[m.id]);
+  const completedCount = completedList.length;
+  const totalCount = todaysMeals.length || 3;
 
-  const completedMealsCount = Object.values(completedMeals).filter(Boolean).length;
-  const totalMealsCount = Object.keys(completedMeals).length;
-  const caloriePercent = Math.min(100, Math.round((caloriesConsumed / (calorieTarget || 2000)) * 100));
+  const caloriesConsumed = completedList.reduce((sum, m) => sum + m.calories, 0);
+  const proteinConsumed = completedList.reduce((sum, m) => sum + m.protein, 0);
+  const budgetSpent = completedList.reduce((sum, m) => sum + (m.cost || 0), 0);
+
+  const caloriePercent = Math.min(
+    100,
+    Math.round((caloriesConsumed / (calorieTarget || 2000)) * 100)
+  );
   const caloriesRemaining = Math.max(0, calorieTarget - caloriesConsumed);
 
   if (showFeedback) {
@@ -151,13 +253,24 @@ export function NutrioHome() {
     return (
       <NutrioPlan
         planId={latestPlan?.id}
-        onBack={() => setShowPlanDetail(false)}
+        planData={latestPlan}
+        onBack={() => {
+          setShowPlanDetail(false);
+          loadDashboardData();
+        }}
       />
     );
   }
 
   if (activeTab === 'plans') {
-    return <NutrioGenerate onBack={() => setActiveTab('home')} />;
+    return (
+      <NutrioGenerate
+        onBack={() => {
+          setActiveTab('home');
+          loadDashboardData();
+        }}
+      />
+    );
   }
 
   if (activeTab === 'grocery') {
@@ -194,15 +307,20 @@ export function NutrioHome() {
           <View style={styles.topActions}>
             <Pressable
               style={styles.bellButton}
-              onPress={() => Alert.alert('Notifications', 'No new meal plan alerts today.')}
+              onPress={() => loadDashboardData()}
             >
-              <Ionicons name="notifications-outline" size={20} color={COLORS.heading} />
-              <View style={styles.notificationDot} />
+              <Ionicons
+                name="refresh-outline"
+                size={19}
+                color={COLORS.heading}
+              />
             </Pressable>
 
+            {/* Clickable Profile Avatar */}
             <Pressable
               style={styles.avatarWrapper}
-              onPress={() => Alert.alert('Profile', `Signed in as ${user?.email || 'Charan'}`)}
+              onPress={() => setShowProfileDrawer(true)}
+              hitSlop={8}
             >
               <Image
                 source={require('@/assets/images/icon.png')}
@@ -215,10 +333,12 @@ export function NutrioHome() {
         {/* Greeting Hero */}
         <View style={styles.heroSection}>
           <Text style={styles.heroTitle}>
-            Good morning, {capitalizedUserName}{' '}
+            Good day, {capitalizedUserName}{' '}
             <MaterialCommunityIcons name="sprout" size={22} color={COLORS.brand} />
           </Text>
-          <Text style={styles.heroSubtitle}>Ready for today&apos;s healthy meals?</Text>
+          <Text style={styles.heroSubtitle}>
+            {latestPlan ? 'Here are your personalized meals for today.' : 'Ready to generate your first healthy meal plan?'}
+          </Text>
         </View>
 
         {/* Main Calorie Progress Card */}
@@ -240,7 +360,7 @@ export function NutrioHome() {
             </View>
 
             <Text style={styles.calorieRemaining}>
-              {caloriesRemaining.toLocaleString()} kcal remaining
+              {caloriesRemaining.toLocaleString()} kcal remaining today
             </Text>
           </View>
 
@@ -248,7 +368,7 @@ export function NutrioHome() {
           <View style={styles.ringContainer}>
             <View style={styles.ringOuter}>
               <Text style={styles.ringPercent}>{caloriePercent}%</Text>
-              <Text style={styles.ringLabel}>of goal</Text>
+              <Text style={styles.ringLabel}>consumed</Text>
             </View>
           </View>
         </View>
@@ -258,15 +378,15 @@ export function NutrioHome() {
           {/* Budget */}
           <Pressable
             style={({ pressed }) => [styles.statCard, pressed && { opacity: 0.85 }]}
-            onPress={() => Alert.alert('Daily Budget', `Spent ₹${budgetSpent} of your ₹${dailyBudget} limit.`)}
+            onPress={() => Alert.alert('Daily Budget', `Spent LKR ${budgetSpent} of LKR ${dailyBudget} target.`)}
           >
             <View style={[styles.statIconWrapper, { backgroundColor: COLORS.iconBgGreen }]}>
               <MaterialCommunityIcons name="wallet-outline" size={18} color={COLORS.iconColorGreen} />
             </View>
             <View style={styles.statCopy}>
               <Text style={styles.statLabel}>Budget</Text>
-              <Text style={styles.statValue}>₹{budgetSpent}</Text>
-              <Text style={styles.statDetail}>of ₹{dailyBudget}</Text>
+              <Text style={styles.statValue}>LKR {budgetSpent}</Text>
+              <Text style={styles.statDetail}>of LKR {dailyBudget}</Text>
             </View>
             <Ionicons name="chevron-forward" size={13} color={COLORS.chevron} style={styles.statChevron} />
           </Pressable>
@@ -274,7 +394,7 @@ export function NutrioHome() {
           {/* Meals */}
           <Pressable
             style={({ pressed }) => [styles.statCard, pressed && { opacity: 0.85 }]}
-            onPress={() => Alert.alert('Meals Progress', `${completedMealsCount} of ${totalMealsCount} meals completed today.`)}
+            onPress={() => Alert.alert('Meals Progress', `${completedCount} of ${totalCount} meals logged today.`)}
           >
             <View style={[styles.statIconWrapper, { backgroundColor: COLORS.iconBgBlue }]}>
               <MaterialCommunityIcons name="silverware-fork-knife" size={17} color={COLORS.iconColorBlue} />
@@ -282,7 +402,7 @@ export function NutrioHome() {
             <View style={styles.statCopy}>
               <Text style={styles.statLabel}>Meals</Text>
               <Text style={styles.statValue}>
-                {completedMealsCount} <Text style={{ fontSize: 11, fontWeight: '500' }}>of</Text> {totalMealsCount}
+                {completedCount} <Text style={{ fontSize: 11, fontWeight: '500' }}>of</Text> {totalCount}
               </Text>
               <Text style={styles.statDetail}>completed</Text>
             </View>
@@ -292,7 +412,7 @@ export function NutrioHome() {
           {/* Protein */}
           <Pressable
             style={({ pressed }) => [styles.statCard, pressed && { opacity: 0.85 }]}
-            onPress={() => Alert.alert('Protein Intake', `${proteinConsumed}g of ${proteinTarget}g protein target met.`)}
+            onPress={() => Alert.alert('Protein Intake', `${proteinConsumed}g of ${proteinTarget}g daily protein target.`)}
           >
             <View style={[styles.statIconWrapper, { backgroundColor: COLORS.iconBgGreen }]}>
               <MaterialCommunityIcons name="arm-flex" size={17} color={COLORS.iconColorGreen} />
@@ -306,160 +426,153 @@ export function NutrioHome() {
           </Pressable>
         </View>
 
-        {/* Generate Weekly Meal Plan Banner */}
-        <Pressable
-          style={({ pressed }) => [styles.generateBanner, pressed && { opacity: 0.92 }]}
-          onPress={() => setActiveTab('plans')}
-        >
-          <View style={styles.bannerLeft}>
-            <Text style={styles.bannerTitle}>Generate Weekly{'\n'}Meal Plan</Text>
-            <Text style={styles.bannerSubtitle}>
-              Personalized meals,{'\n'}goals and grocery list.
-            </Text>
-          </View>
+        {/* Dynamic Plan Banner */}
+        {latestPlan ? (
+          <Pressable
+            style={({ pressed }) => [styles.generateBanner, pressed && { opacity: 0.92 }]}
+            onPress={() => setShowPlanDetail(true)}
+          >
+            <View style={styles.bannerLeft}>
+              <View style={styles.planScorePill}>
+                <Ionicons name="sparkles" size={11} color="#285d2b" />
+                <Text style={styles.planScoreText}>
+                  AI Score {latestPlan.qualityScore || 86}/100
+                </Text>
+              </View>
+              <Text style={styles.bannerTitle}>Active Meal Plan</Text>
+              <Text style={styles.bannerSubtitle}>
+                {latestPlan.startDate || 'Current'} • Tap to view full plan & recipes
+              </Text>
+            </View>
 
-          {/* Graphic in Center */}
-          <View style={styles.bannerGraphicWrapper}>
-            <Image
-              source={require('@/assets/images/nutrio-salad.png')}
-              style={styles.bannerSalad}
-              resizeMode="cover"
-            />
-          </View>
+            <View style={styles.bannerGraphicWrapper}>
+              <Image
+                source={require('@/assets/images/nutrio-salad.png')}
+                style={styles.bannerSalad}
+                resizeMode="cover"
+              />
+            </View>
 
-          {/* Action Arrow Button on Right */}
-          <View style={styles.bannerArrowBtn}>
-            <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
-          </View>
-        </Pressable>
+            <View style={styles.bannerArrowBtn}>
+              <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+            </View>
+          </Pressable>
+        ) : (
+          <Pressable
+            style={({ pressed }) => [styles.generateBanner, pressed && { opacity: 0.92 }]}
+            onPress={() => setActiveTab('plans')}
+          >
+            <View style={styles.bannerLeft}>
+              <Text style={styles.bannerTitle}>Generate 3-Day{'\n'}Meal Plan</Text>
+              <Text style={styles.bannerSubtitle}>
+                Personalized meals,{'\n'}goals and grocery list.
+              </Text>
+            </View>
 
-        {/* Today's Meals Section */}
+            <View style={styles.bannerGraphicWrapper}>
+              <Image
+                source={require('@/assets/images/nutrio-salad.png')}
+                style={styles.bannerSalad}
+                resizeMode="cover"
+              />
+            </View>
+
+            <View style={styles.bannerArrowBtn}>
+              <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+            </View>
+          </Pressable>
+        )}
+
+        {/* Today's Meals Section Header */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Today&apos;s Meals</Text>
-          <Pressable onPress={() => setShowPlanDetail(true)}>
-            <Text style={styles.viewAllText}>View all</Text>
-          </Pressable>
+          {latestPlan && (
+            <Pressable onPress={() => setShowPlanDetail(true)}>
+              <Text style={styles.viewAllText}>View all</Text>
+            </Pressable>
+          )}
         </View>
 
-        {/* 3 Meal Cards Grid */}
-        <View style={styles.mealsGrid}>
-          {/* 1. Breakfast */}
-          <View style={styles.mealCard}>
-            <Pressable
-              style={styles.mealImageContainer}
-              onPress={() => openFeedbackForMeal('Berry Oats Bowl', 'Breakfast', 420)}
-            >
-              <Image
-                source={require('@/assets/images/food1.png')}
-                style={styles.mealImage}
-                resizeMode="cover"
-              />
-              <View style={[styles.mealTimeBadge, { backgroundColor: '#eef8eb' }]}>
-                <Feather name="sun" size={13} color={COLORS.brand} />
-              </View>
-            </Pressable>
+        {/* Today's Meals Cards Grid (Dynamic from DB) */}
+        {todaysMeals.length > 0 ? (
+          <View style={styles.mealsGrid}>
+            {todaysMeals.map((meal) => {
+              const isChecked = !!completedMealIds[meal.id];
+              return (
+                <View key={meal.id} style={styles.mealCard}>
+                  <Pressable
+                    style={styles.mealImageContainer}
+                    onPress={() => openFeedbackForMeal(meal.name, meal.type, meal.calories)}
+                  >
+                    <Image
+                      source={meal.image}
+                      style={styles.mealImage}
+                      resizeMode="cover"
+                    />
+                    <View
+                      style={[
+                        styles.mealTimeBadge,
+                        meal.type.toLowerCase() === 'breakfast'
+                          ? { backgroundColor: '#eef8eb' }
+                          : meal.type.toLowerCase() === 'dinner'
+                          ? { backgroundColor: '#f3e8ff' }
+                          : { backgroundColor: '#fffbeb' },
+                      ]}
+                    >
+                      {meal.type.toLowerCase() === 'breakfast' ? (
+                        <Feather name="sun" size={13} color={COLORS.brand} />
+                      ) : meal.type.toLowerCase() === 'dinner' ? (
+                        <Ionicons name="moon" size={12} color="#8b5cf6" />
+                      ) : (
+                        <Ionicons name="sunny-outline" size={14} color="#f59e0b" />
+                      )}
+                    </View>
+                  </Pressable>
 
-            <View style={styles.mealCardBody}>
-              <Pressable
-                style={{ flex: 1 }}
-                onPress={() => openFeedbackForMeal('Berry Oats Bowl', 'Breakfast', 420)}
-              >
-                <Text style={styles.mealTypeName}>Breakfast</Text>
-                <Text style={styles.mealDishName} numberOfLines={1}>Berry Oats Bowl</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => toggleMealComplete('breakfast')}
-                hitSlop={8}
-              >
-                {completedMeals.breakfast ? (
-                  <View style={styles.checkCircleCompleted}>
-                    <Ionicons name="checkmark" size={13} color="#FFFFFF" />
+                  <View style={styles.mealCardBody}>
+                    <Pressable
+                      style={{ flex: 1 }}
+                      onPress={() => openFeedbackForMeal(meal.name, meal.type, meal.calories)}
+                    >
+                      <Text style={styles.mealTypeName}>{meal.type}</Text>
+                      <Text style={styles.mealDishName} numberOfLines={1}>
+                        {meal.name}
+                      </Text>
+                      <Text style={styles.mealKcalText}>{meal.calories} kcal</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => toggleMealComplete(meal.id)}
+                      hitSlop={8}
+                    >
+                      {isChecked ? (
+                        <View style={styles.checkCircleCompleted}>
+                          <Ionicons name="checkmark" size={13} color="#FFFFFF" />
+                        </View>
+                      ) : (
+                        <View style={styles.checkCirclePending} />
+                      )}
+                    </Pressable>
                   </View>
-                ) : (
-                  <View style={styles.checkCirclePending} />
-                )}
-              </Pressable>
-            </View>
+                </View>
+              );
+            })}
           </View>
-
-          {/* 2. Lunch */}
-          <View style={styles.mealCard}>
+        ) : (
+          <View style={styles.emptyStateCard}>
+            <MaterialCommunityIcons name="silverware-fork-knife" size={32} color={COLORS.brand} />
+            <Text style={styles.emptyStateTitle}>No meal plan active</Text>
+            <Text style={styles.emptyStateSubtitle}>
+              Tap below to create your personalized 3-day meal plan with recipes and ingredients.
+            </Text>
             <Pressable
-              style={styles.mealImageContainer}
-              onPress={() => openFeedbackForMeal('Quinoa Power Bowl', 'Lunch', 620)}
+              style={styles.emptyStateButton}
+              onPress={() => setActiveTab('plans')}
             >
-              <Image
-                source={require('@/assets/images/food2.png')}
-                style={styles.mealImage}
-                resizeMode="cover"
-              />
-              <View style={[styles.mealTimeBadge, { backgroundColor: '#fffbeb' }]}>
-                <Ionicons name="sunny-outline" size={14} color="#f59e0b" />
-              </View>
+              <Ionicons name="sparkles" size={16} color="#FFFFFF" />
+              <Text style={styles.emptyStateButtonText}>Generate Plan</Text>
             </Pressable>
-
-            <View style={styles.mealCardBody}>
-              <Pressable
-                style={{ flex: 1 }}
-                onPress={() => openFeedbackForMeal('Quinoa Power Bowl', 'Lunch', 620)}
-              >
-                <Text style={styles.mealTypeName}>Lunch</Text>
-                <Text style={styles.mealDishName} numberOfLines={1}>Quinoa Power Bowl</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => toggleMealComplete('lunch')}
-                hitSlop={8}
-              >
-                {completedMeals.lunch ? (
-                  <View style={styles.checkCircleCompleted}>
-                    <Ionicons name="checkmark" size={13} color="#FFFFFF" />
-                  </View>
-                ) : (
-                  <View style={styles.checkCirclePending} />
-                )}
-              </Pressable>
-            </View>
           </View>
-
-          {/* 3. Dinner */}
-          <View style={styles.mealCard}>
-            <Pressable
-              style={styles.mealImageContainer}
-              onPress={() => openFeedbackForMeal('Lemon Salmon', 'Dinner', 560)}
-            >
-              <Image
-                source={require('@/assets/images/food3.png')}
-                style={styles.mealImage}
-                resizeMode="cover"
-              />
-              <View style={[styles.mealTimeBadge, { backgroundColor: '#f3e8ff' }]}>
-                <Ionicons name="moon" size={12} color="#8b5cf6" />
-              </View>
-            </Pressable>
-
-            <View style={styles.mealCardBody}>
-              <Pressable
-                style={{ flex: 1 }}
-                onPress={() => openFeedbackForMeal('Lemon Salmon', 'Dinner', 560)}
-              >
-                <Text style={styles.mealTypeName}>Dinner</Text>
-                <Text style={styles.mealDishName} numberOfLines={1}>Lemon Salmon</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => toggleMealComplete('dinner')}
-                hitSlop={8}
-              >
-                {completedMeals.dinner ? (
-                  <View style={styles.checkCircleCompleted}>
-                    <Ionicons name="checkmark" size={13} color="#FFFFFF" />
-                  </View>
-                ) : (
-                  <View style={styles.checkCirclePending} />
-                )}
-              </Pressable>
-            </View>
-          </View>
-        </View>
+        )}
 
         {/* Grocery Preview Card */}
         <Pressable
@@ -471,87 +584,233 @@ export function NutrioHome() {
           </View>
 
           <View style={styles.groceryCopy}>
-            <Text style={styles.groceryTitle}>Grocery Preview</Text>
+            <Text style={styles.groceryTitle}>Grocery List</Text>
             <Text style={styles.grocerySubtitle}>
-              18 items · ₹{budgetSpent} estimated
+              {groceryCount > 0 ? `${groceryCount} ingredients consolidated from your meals` : 'View and check off ingredients for your plan'}
             </Text>
           </View>
 
-          {/* Right mini food badges */}
-          <View style={styles.groceryRightItems}>
-            <Text style={styles.groceryEmoji}>🍌</Text>
-            <Text style={styles.groceryEmoji}>🥬</Text>
-            <Text style={styles.groceryEmoji}>🍗</Text>
-            <View style={styles.groceryCountPill}>
-              <Text style={styles.groceryCountText}>+15</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={14} color={COLORS.chevron} style={{ marginLeft: 2 }} />
-          </View>
+          <Ionicons name="chevron-forward" size={18} color={COLORS.chevron} />
         </Pressable>
       </ScrollView>
 
-      {/* Bottom Navigation Bar */}
-      <View style={styles.bottomNav}>
-        {/* Home */}
-        <Pressable
-          style={[styles.navItem, currentTab === 'home' && styles.navItemActive]}
-          onPress={() => setActiveTab('home')}
-        >
-          <Ionicons
-            name="home"
-            size={20}
-            color={currentTab === 'home' ? COLORS.brand : COLORS.label}
-          />
-          <Text style={[styles.navText, currentTab === 'home' && styles.navTextActive]}>
-            Home
-          </Text>
-        </Pressable>
+      {/* Bottom Floating Navigation Bar */}
+      <View style={styles.bottomNavContainer}>
+        <View style={styles.bottomNav}>
+          {/* 1. Home */}
+          <Pressable
+            style={styles.navItem}
+            onPress={() => {
+              setActiveTab('home');
+              setShowPlanDetail(false);
+            }}
+          >
+            <Ionicons
+              name={activeTab === 'home' && !showPlanDetail ? 'home' : 'home-outline'}
+              size={20}
+              color={activeTab === 'home' && !showPlanDetail ? COLORS.brand : COLORS.muted}
+            />
+            <Text
+              style={[
+                styles.navLabel,
+                activeTab === 'home' && !showPlanDetail && styles.navLabelActive,
+              ]}
+            >
+              Home
+            </Text>
+          </Pressable>
 
-        {/* Plans */}
-        <Pressable
-          style={[styles.navItem, currentTab === 'plans' && styles.navItemActive]}
-          onPress={() => setActiveTab('plans')}
-        >
-          <Ionicons
-            name="calendar-outline"
-            size={20}
-            color={currentTab === 'plans' ? COLORS.brand : COLORS.label}
-          />
-          <Text style={[styles.navText, currentTab === 'plans' && styles.navTextActive]}>
-            Plans
-          </Text>
-        </Pressable>
+          {/* 2. Plan */}
+          <Pressable
+            style={styles.navItem}
+            onPress={() => {
+              if (latestPlan) {
+                setShowPlanDetail(true);
+              } else {
+                setActiveTab('plans');
+              }
+            }}
+          >
+            <Ionicons
+              name={showPlanDetail ? 'calendar' : 'calendar-outline'}
+              size={20}
+              color={showPlanDetail ? COLORS.brand : COLORS.muted}
+            />
+            <Text
+              style={[
+                styles.navLabel,
+                showPlanDetail && styles.navLabelActive,
+              ]}
+            >
+              Plans
+            </Text>
+          </Pressable>
 
-        {/* Grocery */}
-        <Pressable
-          style={[styles.navItem, currentTab === 'grocery' && styles.navItemActive]}
-          onPress={() => setActiveTab('grocery')}
-        >
-          <MaterialCommunityIcons
-            name="shopping-outline"
-            size={20}
-            color={currentTab === 'grocery' ? COLORS.brand : COLORS.label}
-          />
-          <Text style={[styles.navText, currentTab === 'grocery' && styles.navTextActive]}>
-            Grocery
-          </Text>
-        </Pressable>
+          {/* 3. Grocery */}
+          <Pressable
+            style={styles.navItem}
+            onPress={() => setActiveTab('grocery')}
+          >
+            <Ionicons
+              name="cart-outline"
+              size={20}
+              color={COLORS.muted}
+            />
+            <Text style={styles.navLabel}>
+              Grocery
+            </Text>
+          </Pressable>
 
-        {/* Profile */}
-        <Pressable
-          style={[styles.navItem, currentTab === 'profile' && styles.navItemActive]}
-          onPress={() => setActiveTab('profile')}
-        >
-          <Ionicons
-            name="person-outline"
-            size={20}
-            color={currentTab === 'profile' ? COLORS.brand : COLORS.label}
-          />
-          <Text style={[styles.navText, currentTab === 'profile' && styles.navTextActive]}>
-            Profile
-          </Text>
-        </Pressable>
+          {/* 4. Profile / Logout Drawer */}
+          <Pressable
+            style={styles.navItem}
+            onPress={() => setShowProfileDrawer(true)}
+          >
+            <Ionicons
+              name={showProfileDrawer ? 'person' : 'person-outline'}
+              size={20}
+              color={showProfileDrawer ? COLORS.brand : COLORS.muted}
+            />
+            <Text
+              style={[
+                styles.navLabel,
+                showProfileDrawer && styles.navLabelActive,
+              ]}
+            >
+              Profile
+            </Text>
+          </Pressable>
+        </View>
       </View>
+
+      {/* Account / Profile Drawer Modal */}
+      <Modal visible={showProfileDrawer} transparent animationType="slide">
+        <Pressable
+          style={styles.drawerOverlay}
+          onPress={() => setShowProfileDrawer(false)}
+        >
+          <Pressable
+            style={styles.drawerContent}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.drawerHandle} />
+
+            <View style={styles.drawerHeader}>
+              <Text style={styles.drawerTitle}>My Account</Text>
+              <Pressable
+                style={styles.drawerCloseBtn}
+                onPress={() => setShowProfileDrawer(false)}
+              >
+                <Ionicons name="close" size={20} color={COLORS.heading} />
+              </Pressable>
+            </View>
+
+            {/* User Info Card */}
+            <View style={styles.profileUserCard}>
+              <View style={styles.profileAvatarLarge}>
+                <Image
+                  source={require('@/assets/images/icon.png')}
+                  style={styles.avatarImage}
+                />
+              </View>
+              <View style={styles.profileUserInfo}>
+                <Text style={styles.profileUserName} numberOfLines={1} ellipsizeMode="tail">
+                  {capitalizedUserName}
+                </Text>
+                <Text style={styles.profileUserEmail} numberOfLines={1} ellipsizeMode="tail">
+                  {user?.email || 'user@nutrio.ai'}
+                </Text>
+                <View style={styles.profileStatusBadge}>
+                  <View style={styles.onlineDot} />
+                  <Text style={styles.profileStatusText}>Personalized Active</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Profile Nutrition Stats */}
+            <View style={styles.profileStatsBox}>
+              <View style={styles.profileStatItem}>
+                <Text style={styles.profileStatVal} numberOfLines={1} ellipsizeMode="tail">
+                  {calorieTarget} kcal
+                </Text>
+                <Text style={styles.profileStatLabel} numberOfLines={1}>
+                  Target Cal
+                </Text>
+              </View>
+              <View style={styles.profileStatItem}>
+                <Text style={styles.profileStatVal} numberOfLines={1} ellipsizeMode="tail">
+                  LKR {dailyBudget}
+                </Text>
+                <Text style={styles.profileStatLabel} numberOfLines={1}>
+                  Daily Budget
+                </Text>
+              </View>
+              <View style={styles.profileStatItem}>
+                <Text style={styles.profileStatVal} numberOfLines={1} ellipsizeMode="tail">
+                  {userGoal}
+                </Text>
+                <Text style={styles.profileStatLabel} numberOfLines={1}>
+                  Goal
+                </Text>
+              </View>
+            </View>
+
+            {/* Quick Actions List */}
+            <View style={styles.profileActionsList}>
+              <Pressable
+                style={({ pressed }) => [styles.profileActionRow, pressed && { opacity: 0.7 }]}
+                onPress={() => {
+                  setShowProfileDrawer(false);
+                  setActiveTab('plans');
+                }}
+              >
+                <View style={[styles.actionIconBg, { backgroundColor: COLORS.iconBgGreen }]}>
+                  <Ionicons name="sparkles" size={17} color={COLORS.brand} />
+                </View>
+                <Text style={styles.actionRowText}>Generate New Meal Plan</Text>
+                <Ionicons name="chevron-forward" size={16} color={COLORS.chevron} />
+              </Pressable>
+
+              <Pressable
+                style={({ pressed }) => [styles.profileActionRow, pressed && { opacity: 0.7 }]}
+                onPress={() => {
+                  loadDashboardData();
+                  Alert.alert('Refreshed', 'Dashboard nutrition metrics updated from database.');
+                }}
+              >
+                <View style={[styles.actionIconBg, { backgroundColor: COLORS.iconBgBlue }]}>
+                  <Ionicons name="sync-outline" size={17} color={COLORS.iconColorBlue} />
+                </View>
+                <Text style={styles.actionRowText}>Refresh Nutrition Data</Text>
+                <Ionicons name="chevron-forward" size={16} color={COLORS.chevron} />
+              </Pressable>
+
+              <Pressable
+                style={({ pressed }) => [styles.profileActionRow, pressed && { opacity: 0.7 }]}
+                onPress={() => {
+                  setShowProfileDrawer(false);
+                  useAuthStore.setState({ isOnboarded: false });
+                }}
+              >
+                <View style={[styles.actionIconBg, { backgroundColor: '#fef3c7' }]}>
+                  <Ionicons name="options-outline" size={17} color="#d97706" />
+                </View>
+                <Text style={styles.actionRowText}>Edit Health Preferences</Text>
+                <Ionicons name="chevron-forward" size={16} color={COLORS.chevron} />
+              </Pressable>
+            </View>
+
+            {/* Logout Button */}
+            <Pressable
+              style={({ pressed }) => [styles.logoutButton, pressed && { opacity: 0.85 }]}
+              onPress={handleLogout}
+            >
+              <Ionicons name="log-out-outline" size={18} color={COLORS.danger} />
+              <Text style={styles.logoutButtonText}>Log Out</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -566,21 +825,21 @@ const styles = StyleSheet.create({
   },
   bgBlobTopRight: {
     position: 'absolute',
-    width: 180,
-    height: 160,
-    right: -40,
-    top: -20,
-    borderRadius: 90,
+    width: 170,
+    height: 150,
+    right: -35,
+    top: -15,
+    borderRadius: 85,
     backgroundColor: '#EDF6E8',
-    opacity: 0.6,
+    opacity: 0.55,
   },
   bgBlobBottomLeft: {
     position: 'absolute',
-    width: 140,
-    height: 140,
-    left: -40,
-    bottom: 50,
-    borderRadius: 70,
+    width: 130,
+    height: 130,
+    left: -35,
+    bottom: 20,
+    borderRadius: 65,
     backgroundColor: '#EDF6E8',
     opacity: 0.4,
   },
@@ -590,7 +849,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     paddingHorizontal: 18,
     paddingTop: 10,
-    paddingBottom: 24,
+    paddingBottom: 90,
   },
 
   // Top Bar
@@ -598,7 +857,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 14,
+    marginBottom: 12,
   },
   brandRow: {
     flexDirection: 'row',
@@ -608,20 +867,19 @@ const styles = StyleSheet.create({
   brandMark: {
     width: 34,
     height: 34,
-    borderRadius: 10,
+    borderRadius: 17,
     backgroundColor: COLORS.iconBgGreen,
     alignItems: 'center',
     justifyContent: 'center',
   },
   brandName: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: '800',
     color: COLORS.heading,
-    letterSpacing: -0.5,
+    letterSpacing: -0.3,
   },
   brandNameAccent: {
     color: COLORS.brand,
-    fontWeight: '900',
   },
   topActions: {
     flexDirection: 'row',
@@ -638,26 +896,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  notificationDot: {
-    position: 'absolute',
-    top: 7,
-    right: 7,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.brand,
-  },
   avatarWrapper: {
     width: 36,
     height: 36,
     borderRadius: 18,
     overflow: 'hidden',
     borderWidth: 1.5,
-    borderColor: '#438e3b',
+    borderColor: COLORS.brand,
   },
   avatarImage: {
-    width: 36,
-    height: 36,
+    width: '100%',
+    height: '100%',
   },
 
   // Hero Section
@@ -668,148 +917,128 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '800',
     color: COLORS.heading,
-    lineHeight: 28,
-    letterSpacing: -0.5,
+    letterSpacing: -0.3,
   },
   heroSubtitle: {
     fontSize: 13,
     color: COLORS.muted,
-    lineHeight: 18,
-    marginTop: 3,
+    marginTop: 2,
   },
 
   // Calorie Card
   calorieCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 22,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
     marginBottom: 12,
-    shadowColor: '#1a3319',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
   },
   calorieLeft: {
     flex: 1,
+    marginRight: 12,
   },
   calorieHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
+    marginBottom: 6,
   },
   calorieHeaderTitle: {
-    fontSize: 14.5,
+    fontSize: 12.5,
     fontWeight: '700',
-    color: COLORS.heading,
+    color: COLORS.muted,
   },
   calorieNumbersRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    marginTop: 5,
-    marginBottom: 7,
+    marginBottom: 8,
   },
   calorieCurrent: {
-    fontSize: 25,
-    fontWeight: '800',
-    color: '#2e7d32',
-    letterSpacing: -0.5,
+    fontSize: 22,
+    fontWeight: '900',
+    color: COLORS.heading,
   },
   calorieTarget: {
-    fontSize: 12.5,
+    fontSize: 13,
     fontWeight: '600',
     color: COLORS.muted,
   },
   progressBarTrack: {
-    width: '88%',
     height: 6,
     borderRadius: 3,
     backgroundColor: COLORS.progressTrack,
     overflow: 'hidden',
-    marginBottom: 5,
+    marginBottom: 6,
   },
   progressBarFill: {
     height: '100%',
-    borderRadius: 3,
     backgroundColor: COLORS.brand,
+    borderRadius: 3,
   },
   calorieRemaining: {
     fontSize: 11,
-    fontWeight: '500',
     color: COLORS.muted,
+    fontWeight: '600',
   },
   ringContainer: {
     alignItems: 'center',
     justifyContent: 'center',
   },
   ringOuter: {
-    width: 74,
-    height: 74,
-    borderRadius: 37,
-    borderWidth: 5.5,
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+    borderWidth: 3.5,
     borderColor: COLORS.brand,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FAFDF9',
+    backgroundColor: '#f6fbf4',
   },
   ringPercent: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: COLORS.heading,
+    fontSize: 14,
+    fontWeight: '900',
+    color: COLORS.brandDark,
   },
   ringLabel: {
-    fontSize: 9.5,
-    fontWeight: '600',
+    fontSize: 8.5,
     color: COLORS.muted,
-    marginTop: -1,
+    fontWeight: '600',
   },
 
-  // 3-Stat Cards Row
+  // Stats Row
   statsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     gap: 8,
-    marginBottom: 12,
+    marginBottom: 14,
   },
   statCard: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
+    padding: 10,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
-    paddingHorizontal: 8,
-    paddingVertical: 9,
-    gap: 5,
-    shadowColor: '#1a3319',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
+    alignItems: 'center',
   },
   statIconWrapper: {
-    width: 30,
-    height: 30,
-    borderRadius: 9,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0,
+    marginBottom: 6,
   },
   statCopy: {
-    flex: 1,
-    minWidth: 0,
+    alignItems: 'center',
   },
   statLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: COLORS.label,
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: COLORS.muted,
   },
   statValue: {
     fontSize: 12.5,
@@ -818,70 +1047,74 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   statDetail: {
-    fontSize: 9,
-    fontWeight: '500',
+    fontSize: 9.5,
     color: COLORS.muted,
+    marginTop: 1,
   },
   statChevron: {
-    flexShrink: 0,
+    marginTop: 4,
   },
 
-  // Generate Weekly Meal Plan Banner
+  // Generate Banner
   generateBanner: {
+    backgroundColor: COLORS.bannerBg,
+    borderRadius: 20,
+    padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.bannerBg,
-    borderRadius: 18,
+    justifyContent: 'space-between',
     borderWidth: 1,
     borderColor: COLORS.bannerBorder,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 14,
-    shadowColor: '#2b412a',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
+    marginBottom: 16,
+    overflow: 'hidden',
   },
   bannerLeft: {
     flex: 1,
   },
-  bannerTitle: {
-    fontSize: 15.5,
+  planScorePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#d8ecd1',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    alignSelf: 'flex-start',
+    marginBottom: 4,
+  },
+  planScoreText: {
+    fontSize: 10,
     fontWeight: '800',
-    color: COLORS.heading,
-    lineHeight: 19,
-    letterSpacing: -0.3,
+    color: '#285d2b',
+  },
+  bannerTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.brandDark,
+    lineHeight: 20,
   },
   bannerSubtitle: {
     fontSize: 11.5,
-    color: '#4b5e4d',
-    lineHeight: 15,
+    color: '#4b5563',
     marginTop: 3,
+    lineHeight: 15,
   },
   bannerGraphicWrapper: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    overflow: 'hidden',
-    marginHorizontal: 6,
+    width: 55,
+    height: 55,
+    marginHorizontal: 8,
   },
   bannerSalad: {
-    width: 64,
-    height: 64,
+    width: '100%',
+    height: '100%',
   },
   bannerArrowBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: COLORS.brandButton,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: COLORS.brandButton,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 3,
   },
 
   // Section Header
@@ -895,7 +1128,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '800',
     color: COLORS.heading,
-    letterSpacing: -0.4,
   },
   viewAllText: {
     fontSize: 12.5,
@@ -903,29 +1135,28 @@ const styles = StyleSheet.create({
     color: COLORS.brand,
   },
 
-  // Today's Meals 3-Grid
+  // Meals Grid
   mealsGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 8,
-    marginBottom: 12,
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 16,
   },
   mealCard: {
-    flex: 1,
+    width: '48%',
     backgroundColor: '#FFFFFF',
-    borderRadius: 15,
+    borderRadius: 16,
+    padding: 10,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
-    overflow: 'hidden',
-    shadowColor: '#1a3319',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
   },
   mealImageContainer: {
     width: '100%',
-    height: 78,
+    height: 85,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#f3f4f6',
+    marginBottom: 8,
     position: 'relative',
   },
   mealImage: {
@@ -934,11 +1165,11 @@ const styles = StyleSheet.create({
   },
   mealTimeBadge: {
     position: 'absolute',
-    top: 5,
-    left: 5,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    top: 6,
+    right: 6,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -946,126 +1177,345 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 7,
-    paddingVertical: 7,
-    gap: 3,
   },
   mealTypeName: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '700',
-    color: COLORS.heading,
+    color: COLORS.muted,
   },
   mealDishName: {
-    fontSize: 9.5,
-    color: COLORS.muted,
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: COLORS.heading,
+    lineHeight: 16,
     marginTop: 1,
   },
+  mealKcalText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.brand,
+    marginTop: 2,
+  },
+  checkCirclePending: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: '#d1d5db',
+    backgroundColor: '#FFFFFF',
+  },
   checkCircleCompleted: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     backgroundColor: COLORS.brand,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkCirclePending: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 1.5,
-    borderColor: '#d1d5db',
-  },
 
-  // Grocery Preview Card
-  groceryCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  // Empty State Card
+  emptyStateCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 18,
+    padding: 24,
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
-    paddingHorizontal: 12,
+    marginBottom: 16,
+  },
+  emptyStateTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: COLORS.heading,
+    marginTop: 8,
+  },
+  emptyStateSubtitle: {
+    fontSize: 12,
+    color: COLORS.muted,
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 16,
+  },
+  emptyStateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.brandDark,
+    paddingHorizontal: 18,
     paddingVertical: 10,
-    marginBottom: 8,
-    shadowColor: '#1a3319',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
+    borderRadius: 14,
+    marginTop: 14,
+  },
+  emptyStateButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+
+  // Grocery Card
+  groceryCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    marginBottom: 20,
   },
   groceryIconWrapper: {
-    width: 34,
-    height: 34,
-    borderRadius: 11,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: COLORS.iconBgGreen,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 9,
+    marginRight: 12,
   },
   groceryCopy: {
     flex: 1,
   },
   groceryTitle: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '800',
     color: COLORS.heading,
   },
   grocerySubtitle: {
-    fontSize: 10.5,
+    fontSize: 11.5,
     color: COLORS.muted,
-    marginTop: 1,
-  },
-  groceryRightItems: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  groceryEmoji: {
-    fontSize: 13,
-  },
-  groceryCountPill: {
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 7,
-    backgroundColor: COLORS.iconBgGreen,
-  },
-  groceryCountText: {
-    fontSize: 10.5,
-    fontWeight: '700',
-    color: '#2e7d32',
+    marginTop: 2,
   },
 
-  // Bottom Navigation Bar
+  // Bottom Floating Bar
+  bottomNavContainer: {
+    position: 'absolute',
+    bottom: 12,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
   bottomNav: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
     backgroundColor: '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: '#eef2ec',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    borderRadius: 30,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    width: '90%',
+    maxWidth: 420,
+    justifyContent: 'space-around',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
   },
   navItem: {
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 4,
-    paddingHorizontal: 14,
-    borderRadius: 18,
-    gap: 2,
+    paddingHorizontal: 12,
   },
-  navItemActive: {
-    backgroundColor: COLORS.iconBgGreen,
+  navLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: COLORS.muted,
+    marginTop: 2,
   },
-  navText: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: COLORS.label,
-  },
-  navTextActive: {
+  navLabelActive: {
     color: COLORS.brand,
+    fontWeight: '800',
+  },
+
+  // Profile Drawer Modal Styles
+  drawerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+  },
+  drawerContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 32,
+    width: '100%',
+    maxWidth: 480,
+    alignSelf: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  drawerHandle: {
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#d1d5db',
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  drawerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+    width: '100%',
+  },
+  drawerTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: COLORS.heading,
+  },
+  drawerCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileUserCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f7faf5',
+    borderRadius: 18,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    marginBottom: 12,
+    gap: 12,
+    width: '100%',
+    overflow: 'hidden',
+  },
+  profileAvatarLarge: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    flexShrink: 0,
+  },
+  profileUserInfo: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+  },
+  profileUserName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: COLORS.heading,
+  },
+  profileUserEmail: {
+    fontSize: 12,
+    color: COLORS.muted,
+    marginTop: 2,
+  },
+  profileStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  onlineDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#22c55e',
+  },
+  profileStatusText: {
+    fontSize: 10,
     fontWeight: '700',
+    color: COLORS.brandDark,
+  },
+  profileStatsBox: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    justifyContent: 'space-between',
+    marginBottom: 14,
+    width: '100%',
+    gap: 6,
+    overflow: 'hidden',
+  },
+  profileStatItem: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  profileStatVal: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.heading,
+    textAlign: 'center',
+    maxWidth: '100%',
+  },
+  profileStatLabel: {
+    fontSize: 9.5,
+    color: COLORS.muted,
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  profileActionsList: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    marginBottom: 16,
+    width: '100%',
+    overflow: 'hidden',
+  },
+  profileActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+    gap: 12,
+    width: '100%',
+  },
+  actionIconBg: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  actionRowText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.heading,
+    minWidth: 0,
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: COLORS.dangerBg,
+    paddingVertical: 13,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    width: '100%',
+  },
+  logoutButtonText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: COLORS.danger,
   },
 });
-
-export default NutrioHome;

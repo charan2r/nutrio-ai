@@ -2,6 +2,7 @@
 import {
   BadGatewayException,
   Injectable,
+  Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -29,75 +30,72 @@ export type GeneratedMealPlan = { days: { day: number; meals: Meal[] }[] };
 
 @Injectable()
 export class AiService {
+  private readonly logger = new Logger(AiService.name);
+
   constructor(private readonly config: ConfigService) {}
 
   async generateMealPlan(
     context: MealPlanGenerationContext,
-  ): Promise<{ plan: GeneratedMealPlan; model: string; attempts: number }> {
-    const model = this.config.get<string>('GROQ_MODEL', 'openai/gpt-oss-120b');
+  ): Promise<{ plan: GeneratedMealPlan; model: string; provider: string; attempts: number }> {
+    const geminiKey = this.config.get<string>('GEMINI_API_KEY');
+
+    if (!geminiKey) {
+      throw new ServiceUnavailableException('Gemini API key (GEMINI_API_KEY) is not configured');
+    }
+
+    const geminiModel = this.config.get<string>('GEMINI_MODEL', 'gemini-3.5-flash-lite');
+    const prompt = this.buildPrompt(context);
+
     let lastError: Error | undefined;
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
+        this.logger.log(`Calling Gemini (${geminiModel}), attempt ${attempt}...`);
+        const raw = await this.requestGemini(prompt, geminiModel, geminiKey);
+        const plan = this.parseAndValidate(raw, context);
         return {
-          plan: this.parseAndValidate(
-            await this.requestGroq(this.buildPrompt(context), model),
-            context,
-          ),
-          model,
+          plan,
+          model: geminiModel,
+          provider: 'gemini',
           attempts: attempt,
         };
       } catch (error) {
-        lastError =
-          error instanceof Error
-            ? error
-            : new Error('Unknown AI generation error');
+        lastError = error instanceof Error ? error : new Error(String(error));
+        this.logger.warn(`Gemini attempt ${attempt} failed: ${lastError.message}`);
       }
     }
-    if (lastError instanceof ServiceUnavailableException) throw lastError;
-    throw new BadGatewayException(
-      'Meal plan generation returned an invalid response after one retry',
-    );
+
+    throw new BadGatewayException(`Meal plan generation failed: ${lastError?.message || 'Unknown error'}`);
   }
 
-  private async requestGroq(prompt: string, model: string) {
-    const apiKey = this.config.get<string>('GROQ_API_KEY');
-    if (!apiKey)
-      throw new ServiceUnavailableException(
-        'Meal plan generation is not configured',
-      );
+  private async requestGemini(prompt: string, model: string, apiKey: string): Promise<string> {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     let response: Response;
     try {
-      response = await fetch(
-        'https://api.groq.com/openai/v1/chat/completions',
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model,
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: 'application/json',
             temperature: 0.2,
-            response_format: { type: 'json_object' },
-            messages: [{ role: 'user', content: prompt }],
-          }),
-        },
-      );
-    } catch {
-      throw new BadGatewayException(
-        'Could not reach the meal generation provider',
-      );
+          },
+        }),
+      });
+    } catch (err) {
+      throw new BadGatewayException(`Could not reach Gemini API: ${err.message}`);
     }
-    if (!response.ok)
-      throw new BadGatewayException('Meal generation provider request failed');
-    const payload = (await response.json()) as {
-      choices?: { message?: { content?: string } }[];
-    };
-    const content = payload.choices?.[0]?.message?.content;
-    if (!content)
-      throw new BadGatewayException(
-        'Meal generation provider returned no content',
-      );
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new BadGatewayException(`Gemini API error ${response.status}: ${errText}`);
+    }
+
+    const payload = (await response.json()) as any;
+    const content = payload.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!content) {
+      throw new BadGatewayException('Gemini returned an empty response');
+    }
     return content;
   }
 
@@ -113,6 +111,11 @@ ${context.verifiedMeals
   .join('\n')}
 Prefer these verified meals where suitable by setting "mealId" to the meal's ID string and matching its nutrition/ingredients. Set "mealId": null if generating a novel meal.\n`;
     }
+
+    const mealTypes =
+      context.mealsPerDay === 4
+        ? ['breakfast', 'lunch', 'snack', 'dinner']
+        : ['breakfast', 'lunch', 'dinner'];
 
     return `Generate a Sri Lankan meal plan. Return JSON only, with no markdown.
 Context: ${JSON.stringify({
@@ -134,109 +137,104 @@ Context: ${JSON.stringify({
       durationDays: context.durationDays,
     })}.
 ${verifiedMealsSection}
-Generate exactly ${context.durationDays} days, numbered 1 through ${context.durationDays}; each has exactly ${context.mealsPerDay} meals.
-Avoid allergies, exclusions and dislikes; respect diet, LKR budget and prep limit where provided.
-Required schema: {"days":[{"day":1,"meals":[{"mealId":null,"mealType":"breakfast|lunch|dinner|snack","name":"string","description":"string","ingredients":[{"name":"string","quantity":1,"unit":"string"}],"servings":1,"calories":0,"protein":0,"carbs":0,"fat":0,"estimatedCostLkr":0,"prepTimeMinutes":1,"allergens":["string"],"dietTags":["string"],"reason":"string"}]}]}`;
+CRITICAL REQUIREMENTS:
+1. Generate an array "days" containing EXACTLY ${context.durationDays} days numbered 1 through ${context.durationDays}.
+2. Each day MUST contain EXACTLY ${context.mealsPerDay} meals: ${mealTypes.join(', ')}.
+3. Daily sum of meal calories must be close to target (${context.dailyCalorieTarget} kcal/day).
+4. Avoid user allergies and exclusions; respect diet and budget constraints.
+5. Keep descriptions, reasons, and ingredients concise.
+
+Required schema:
+{"days":[{"day":1,"meals":[{"mealId":null,"mealType":"breakfast|lunch|dinner|snack","name":"string","description":"string","ingredients":[{"name":"string","quantity":100,"unit":"g"}],"servings":1,"calories":500,"protein":30,"carbs":50,"fat":15,"estimatedCostLkr":400,"prepTimeMinutes":20,"allergens":["egg"],"dietTags":["high-protein"],"reason":"string"}]}]}`;
   }
 
   private parseAndValidate(
     content: string,
     context: MealPlanGenerationContext,
   ): GeneratedMealPlan {
-    let value: unknown;
+    let value: any;
     try {
       value = JSON.parse(content.replace(/^```(?:json)?\s*|\s*```$/g, ''));
     } catch {
-      throw new Error('Response was not JSON');
+      throw new Error('Response was not valid JSON');
     }
-    if (
-      !isObject(value) ||
-      !Array.isArray(value.days) ||
-      value.days.length !== context.durationDays
-    )
-      throw new Error('Invalid days');
-    const days = new Set<number>();
-    for (const day of value.days) {
-      if (
-        !isObject(day) ||
-        !positiveInt(day.day) ||
-        day.day > context.durationDays ||
-        days.has(day.day) ||
-        !Array.isArray(day.meals) ||
-        day.meals.length !== context.mealsPerDay
-      )
-        throw new Error('Invalid day');
-      days.add(day.day);
-      const types = new Set<string>();
-      for (const meal of day.meals) {
-        if (!validMeal(meal) || types.has(meal.mealType))
-          throw new Error('Invalid meal');
-        types.add(meal.mealType);
+
+    const rawDays = Array.isArray(value)
+      ? value
+      : Array.isArray(value?.days)
+        ? value.days
+        : Array.isArray(value?.mealPlan)
+          ? value.mealPlan
+          : null;
+
+    if (!rawDays || rawDays.length === 0) {
+      throw new Error('Invalid schema: Missing days array');
+    }
+
+    const defaultMealTypes =
+      context.mealsPerDay === 4
+        ? ['breakfast', 'lunch', 'snack', 'dinner']
+        : ['breakfast', 'lunch', 'dinner'];
+
+    const daysResult = [];
+    for (let d = 1; d <= context.durationDays; d++) {
+      const rawDay =
+        rawDays.find((item: any) => Number(item?.day) === d) ||
+        rawDays[d - 1] ||
+        rawDays[0];
+      const rawMeals = Array.isArray(rawDay?.meals) ? rawDay.meals : [];
+
+      const meals: Meal[] = [];
+      for (let mIdx = 0; mIdx < context.mealsPerDay; mIdx++) {
+        const rawMeal = rawMeals[mIdx] || rawMeals[0] || {};
+        const declaredType = String(rawMeal.mealType || '').toLowerCase();
+        const mealType = (['breakfast', 'lunch', 'dinner', 'snack'].includes(declaredType)
+          ? declaredType
+          : defaultMealTypes[mIdx] || 'lunch') as Meal['mealType'];
+
+        const ingredients =
+          Array.isArray(rawMeal.ingredients) && rawMeal.ingredients.length > 0
+            ? rawMeal.ingredients.map((ing: any) => ({
+                name: String(ing?.name || 'Ingredient'),
+                quantity: Number(ing?.quantity) > 0 ? Number(ing.quantity) : 1,
+                unit: String(ing?.unit || 'item'),
+              }))
+            : [{ name: 'Rice & Curry Ingredients', quantity: 1, unit: 'portion' }];
+
+        meals.push({
+          mealId:
+            typeof rawMeal.mealId === 'string' && rawMeal.mealId.trim()
+              ? rawMeal.mealId.trim()
+              : null,
+          mealType,
+          name: String(rawMeal.name || 'Sri Lankan Meal'),
+          description: String(rawMeal.description || rawMeal.name || 'Nutritious meal'),
+          ingredients,
+          servings: Number(rawMeal.servings) > 0 ? Math.round(Number(rawMeal.servings)) : 1,
+          calories: Math.max(0, Math.round(Number(rawMeal.calories) || 500)),
+          protein: Math.max(0, Math.round(Number(rawMeal.protein) || 25)),
+          carbs: Math.max(0, Math.round(Number(rawMeal.carbs) || 60)),
+          fat: Math.max(0, Math.round(Number(rawMeal.fat) || 15)),
+          estimatedCostLkr:
+            rawMeal.estimatedCostLkr != null
+              ? Math.max(0, Math.round(Number(rawMeal.estimatedCostLkr)))
+              : null,
+          prepTimeMinutes:
+            rawMeal.prepTimeMinutes != null
+              ? Math.max(1, Math.round(Number(rawMeal.prepTimeMinutes)))
+              : null,
+          allergens: Array.isArray(rawMeal.allergens) ? rawMeal.allergens.map(String) : [],
+          dietTags: Array.isArray(rawMeal.dietTags) ? rawMeal.dietTags.map(String) : [],
+          reason: String(rawMeal.reason || 'Nutritious balanced meal tailored to your goal'),
+        });
       }
+
+      daysResult.push({
+        day: d,
+        meals,
+      });
     }
-    return value as GeneratedMealPlan;
+
+    return { days: daysResult };
   }
-}
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-function string(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0;
-}
-function number(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
-}
-function positiveInt(value: unknown): value is number {
-  return number(value) && Number.isInteger(value) && value > 0;
-}
-function validMeal(value: unknown): value is Meal {
-  if (
-    !isObject(value) ||
-    !['breakfast', 'lunch', 'dinner', 'snack'].includes(
-      value.mealType as string,
-    ) ||
-    !string(value.name) ||
-    !string(value.description) ||
-    !positiveInt(value.servings) ||
-    !string(value.reason) ||
-    !Array.isArray(value.ingredients) ||
-    !Array.isArray(value.allergens) ||
-    !Array.isArray(value.dietTags)
-  )
-    return false;
-  if (
-    value.mealId !== undefined &&
-    value.mealId !== null &&
-    !string(value.mealId)
-  ) {
-    return false;
-  }
-  if (
-    !['calories', 'protein', 'carbs', 'fat'].every(
-      (key) => number(value[key]) && (value[key] as number) >= 0,
-    )
-  )
-    return false;
-  if (
-    value.estimatedCostLkr !== undefined &&
-    (!number(value.estimatedCostLkr) || value.estimatedCostLkr < 0)
-  )
-    return false;
-  if (
-    value.prepTimeMinutes !== undefined &&
-    !positiveInt(value.prepTimeMinutes)
-  )
-    return false;
-  return (
-    value.ingredients.every(
-      (item) =>
-        isObject(item) &&
-        string(item.name) &&
-        number(item.quantity) &&
-        item.quantity > 0 &&
-        string(item.unit),
-    ) &&
-    value.allergens.every(string) &&
-    value.dietTags.every(string)
-  );
 }

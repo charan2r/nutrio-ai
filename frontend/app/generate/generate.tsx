@@ -48,9 +48,9 @@ export function NutrioGenerate({ onBack }: { onBack?: () => void } = {}) {
 
   // Settings States
   const [startDate, setStartDate] = useState<string>('Today');
-  const [durationDays, setDurationDays] = useState<number>(7);
+  const [durationDays, setDurationDays] = useState<number>(3);
   const [calorieTarget, setCalorieTarget] = useState<number>(1480);
-  const [strictCalorieControl, setStrictCalorieControl] = useState<boolean>(true);
+  const [strictCalorieControl, setStrictCalorieControl] = useState<boolean>(false);
 
   // Preference Summary States from Backend
   const [goal, setGoal] = useState<string>('Weight Management');
@@ -132,12 +132,15 @@ export function NutrioGenerate({ onBack }: { onBack?: () => void } = {}) {
     loadData();
   }, []);
 
-  if (showGeneratedPlan) {
+  if (showGeneratedPlan && generatedPlan) {
     return (
       <NutrioPlan
         planData={generatedPlan}
-        planId={generatedPlan?.id}
-        onBack={() => setShowGeneratedPlan(false)}
+        planId={generatedPlan?.planId || generatedPlan?.plan?.id || generatedPlan?.id}
+        onBack={() => {
+          setShowGeneratedPlan(false);
+          if (onBack) onBack();
+        }}
       />
     );
   }
@@ -154,21 +157,11 @@ export function NutrioGenerate({ onBack }: { onBack?: () => void } = {}) {
         strictCalorieControl: strictCalorieControl,
       };
 
-      const response = await apiClient.post('/meal-plans/generate', payload);
+      const response = await apiClient.post('/meal-plans/generate', payload, {
+        timeout: 90000,
+      });
       setGeneratedPlan(response.data);
-
-      Alert.alert(
-        'Plan Generated! 🎉',
-        `Your personalized ${durationDays}-day meal plan and grocery list are ready!`,
-        [
-          {
-            text: 'View Plan',
-            onPress: () => {
-              setShowGeneratedPlan(true);
-            },
-          },
-        ]
-      );
+      setShowGeneratedPlan(true);
     } catch (err: any) {
       console.log('Error generating meal plan:', err);
       const msg =
@@ -408,7 +401,7 @@ export function NutrioGenerate({ onBack }: { onBack?: () => void } = {}) {
             <View style={styles.generateButtonContent}>
               <View style={styles.generateButtonHeadingRow}>
                 <Ionicons name="sparkles" size={18} color="#FFFFFF" />
-                <Text style={styles.generateButtonTitle}>Generate Weekly Plan</Text>
+                <Text style={styles.generateButtonTitle}>Generate {durationDays}-Day Plan</Text>
               </View>
               <Text style={styles.generateButtonSubtitle}>
                 Get your meals, recipes & grocery list

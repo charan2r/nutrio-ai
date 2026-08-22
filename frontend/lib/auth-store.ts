@@ -60,7 +60,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // Check onboarding status
       try {
         const statusRes = await apiClient.get('/onboarding/status');
-        set({ isOnboarded: Boolean(statusRes.data?.isOnboarded) });
+        const completed = Boolean(
+          statusRes.data?.onboardingCompleted ?? statusRes.data?.isOnboarded
+        );
+        set({ isOnboarded: completed });
       } catch {
         set({ isOnboarded: false });
       }
@@ -175,7 +178,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       try {
         const statusRes = await apiClient.get('/onboarding/status');
-        set({ isOnboarded: Boolean(statusRes.data?.isOnboarded) });
+        const completed = Boolean(
+          statusRes.data?.onboardingCompleted ?? statusRes.data?.isOnboarded
+        );
+        set({ isOnboarded: completed });
       } catch {
         set({ isOnboarded: false });
       }
