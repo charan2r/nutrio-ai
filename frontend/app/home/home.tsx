@@ -73,6 +73,8 @@ export function NutrioHome() {
   const [showFeedback, setShowFeedback] = useState<boolean>(false);
   const [showProfileDrawer, setShowProfileDrawer] = useState<boolean>(false);
   const [selectedMealForFeedback, setSelectedMealForFeedback] = useState<{
+    id?: string;
+    mealItemId?: string;
     name: string;
     type: string;
     calories: number;
@@ -211,8 +213,14 @@ export function NutrioHome() {
     setCompletedMealIds((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const openFeedbackForMeal = (name: string, type: string, calories: number) => {
-    setSelectedMealForFeedback({ name, type, calories });
+  const openFeedbackForMeal = (meal: TodayMeal) => {
+    setSelectedMealForFeedback({
+      id: meal.id,
+      mealItemId: meal.id,
+      name: meal.name,
+      type: meal.type,
+      calories: meal.calories,
+    });
     setShowFeedback(true);
   };
 
@@ -221,9 +229,17 @@ export function NutrioHome() {
     await logout();
   };
 
-  const userName = user?.email?.split('@')[0] || 'User';
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 12) return 'Good morning';
+    if (hour >= 12 && hour < 17) return 'Good afternoon';
+    if (hour >= 17 && hour < 22) return 'Good evening';
+    return 'Good night';
+  };
+
+  const rawName = user?.name?.trim() || user?.email?.split('@')[0] || 'User';
   const capitalizedUserName =
-    userName.charAt(0).toUpperCase() + userName.slice(1);
+    rawName.charAt(0).toUpperCase() + rawName.slice(1);
 
   // Dynamic calculations based on checked meals
   const completedList = todaysMeals.filter((m) => completedMealIds[m.id]);
@@ -323,7 +339,7 @@ export function NutrioHome() {
               hitSlop={8}
             >
               <Image
-                source={require('@/assets/images/icon.png')}
+                source={require('@/assets/images/boy.png')}
                 style={styles.avatarImage}
               />
             </Pressable>
@@ -333,8 +349,7 @@ export function NutrioHome() {
         {/* Greeting Hero */}
         <View style={styles.heroSection}>
           <Text style={styles.heroTitle}>
-            Good day, {capitalizedUserName}{' '}
-            <MaterialCommunityIcons name="sprout" size={22} color={COLORS.brand} />
+            {getGreeting()}, {capitalizedUserName}{' '}
           </Text>
           <Text style={styles.heroSubtitle}>
             {latestPlan ? 'Here are your personalized meals for today.' : 'Ready to generate your first healthy meal plan?'}
@@ -502,7 +517,7 @@ export function NutrioHome() {
                 <View key={meal.id} style={styles.mealCard}>
                   <Pressable
                     style={styles.mealImageContainer}
-                    onPress={() => openFeedbackForMeal(meal.name, meal.type, meal.calories)}
+                    onPress={() => openFeedbackForMeal(meal)}
                   >
                     <Image
                       source={meal.image}
@@ -532,7 +547,7 @@ export function NutrioHome() {
                   <View style={styles.mealCardBody}>
                     <Pressable
                       style={{ flex: 1 }}
-                      onPress={() => openFeedbackForMeal(meal.name, meal.type, meal.calories)}
+                      onPress={() => openFeedbackForMeal(meal)}
                     >
                       <Text style={styles.mealTypeName}>{meal.type}</Text>
                       <Text style={styles.mealDishName} numberOfLines={1}>
@@ -709,7 +724,7 @@ export function NutrioHome() {
             <View style={styles.profileUserCard}>
               <View style={styles.profileAvatarLarge}>
                 <Image
-                  source={require('@/assets/images/icon.png')}
+                  source={require('@/assets/images/boy.png')}
                   style={styles.avatarImage}
                 />
               </View>
@@ -722,7 +737,7 @@ export function NutrioHome() {
                 </Text>
                 <View style={styles.profileStatusBadge}>
                   <View style={styles.onlineDot} />
-                  <Text style={styles.profileStatusText}>Personalized Active</Text>
+                  <Text style={styles.profileStatusText}>Active</Text>
                 </View>
               </View>
             </View>

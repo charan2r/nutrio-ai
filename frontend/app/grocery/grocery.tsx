@@ -297,10 +297,10 @@ export function NutrioGrocery({
 
           <Pressable
             style={styles.avatarWrapper}
-            onPress={() => Alert.alert('Profile', `Signed in as ${user?.email || 'Charan'}`)}
+            onPress={() => Alert.alert('Profile', `Signed in as ${user?.email}`)}
           >
             <Image
-              source={require('@/assets/images/icon.png')}
+              source={require('@/assets/images/boy.png')}
               style={styles.avatarImage}
             />
           </Pressable>
@@ -310,8 +310,7 @@ export function NutrioGrocery({
         <View style={styles.headingSection}>
           <Text style={styles.headingTitle}>Grocery List</Text>
           <Text style={styles.headingSubtitle}>
-            Everything you need for healthy meals{' '}
-            <MaterialCommunityIcons name="leaf" size={15} color={COLORS.brand} />
+            Everything you need for healthy meals
           </Text>
         </View>
 
@@ -324,8 +323,8 @@ export function NutrioGrocery({
           <View style={styles.costInfo}>
             <Text style={styles.costLabel}>Total Estimated Cost</Text>
             <View style={styles.costPriceRow}>
-              <Text style={styles.costPrice}>₹{totalCost}</Text>
-              <Text style={styles.costBudget}> of ₹700 budget</Text>
+              <Text style={styles.costPrice}>LKR {totalCost}</Text>
+              <Text style={styles.costBudget}> estimated</Text>
             </View>
             {/* Progress Bar */}
             <View style={styles.progressBarTrack}>
@@ -431,7 +430,7 @@ export function NutrioGrocery({
                 </View>
                 <Text style={styles.categoryTitle}>{cat}</Text>
                 <Text style={styles.categoryMeta}>
-                  {categoryItems.length} items • ₹{catTotalCost}
+                  {categoryItems.length} items • LKR {catTotalCost}
                 </Text>
                 <Ionicons
                   name={isCollapsed ? 'chevron-down' : 'chevron-up'}
@@ -456,7 +455,7 @@ export function NutrioGrocery({
                       {/* Left Item Graphic / Image */}
                       <View style={styles.itemImageContainer}>
                         {item.image ? (
-                          <Image source={item.image} style={styles.itemImage} resizeMode="cover" />
+                           <Image source={item.image} style={styles.itemImage} resizeMode="cover" />
                         ) : (
                           <Text style={styles.itemEmoji}>{item.emoji || '🥗'}</Text>
                         )}
@@ -476,7 +475,7 @@ export function NutrioGrocery({
                       </View>
 
                       {/* Right Price & Checkbox */}
-                      <Text style={styles.itemPrice}>₹{item.price}</Text>
+                      <Text style={styles.itemPrice}>LKR {item.price}</Text>
 
                       <View
                         style={[

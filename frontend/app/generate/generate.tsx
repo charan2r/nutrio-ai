@@ -221,10 +221,10 @@ export function NutrioGenerate({ onBack }: { onBack?: () => void } = {}) {
 
             <Pressable
               style={styles.avatarWrapper}
-              onPress={() => Alert.alert('Profile', `User: ${user?.email || 'Charan'}`)}
+              onPress={() => Alert.alert('Profile', `User: ${user?.email}`)}
             >
               <Image
-                source={require('@/assets/images/icon.png')}
+                source={require('@/assets/images/boy.png')}
                 style={styles.avatarImage}
               />
             </Pressable>
@@ -234,7 +234,7 @@ export function NutrioGenerate({ onBack }: { onBack?: () => void } = {}) {
         {/* Hero Graphic: 3D Salad Bowl with Calendar & Sparkles */}
         <View style={styles.heroGraphicWrapper}>
           <Image
-            source={require('@/assets/images/nutrio-salad.png')}
+            source={require('@/assets/images/foods.png')}
             style={styles.heroGraphic}
             resizeMode="contain"
           />
@@ -356,9 +356,9 @@ export function NutrioGenerate({ onBack }: { onBack?: () => void } = {}) {
             <View style={[styles.miniIconWrapper, { backgroundColor: COLORS.iconBgGreen }]}>
               <MaterialCommunityIcons name="wallet-outline" size={17} color={COLORS.iconColorGreen} />
             </View>
-            <Text style={styles.miniLabel}>Budget</Text>
-            <Text style={styles.miniValue}>₹{budget} / week</Text>
-            <Text style={styles.miniSubtitle}>of ₹700</Text>
+            <Text style={styles.miniLabel}>Daily Budget</Text>
+            <Text style={styles.miniValue}>LKR {budget}</Text>
+            <Text style={styles.miniSubtitle}>Target per day</Text>
           </View>
 
           {/* Diet */}
@@ -400,7 +400,6 @@ export function NutrioGenerate({ onBack }: { onBack?: () => void } = {}) {
           ) : (
             <View style={styles.generateButtonContent}>
               <View style={styles.generateButtonHeadingRow}>
-                <Ionicons name="sparkles" size={18} color="#FFFFFF" />
                 <Text style={styles.generateButtonTitle}>Generate {durationDays}-Day Plan</Text>
               </View>
               <Text style={styles.generateButtonSubtitle}>
@@ -624,8 +623,8 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   heroGraphic: {
-    width: 140,
-    height: 115,
+    width: 80,
+    height: 75,
   },
   sparkleTopLeft: {
     position: 'absolute',

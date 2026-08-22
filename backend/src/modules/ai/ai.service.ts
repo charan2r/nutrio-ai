@@ -40,7 +40,7 @@ export class AiService {
     const geminiKey = this.config.get<string>('GEMINI_API_KEY');
 
     if (!geminiKey) {
-      throw new ServiceUnavailableException('Gemini API key (GEMINI_API_KEY) is not configured');
+      throw new ServiceUnavailableException('Gemini API key is not configured');
     }
 
     const geminiModel = this.config.get<string>('GEMINI_MODEL', 'gemini-3.5-flash-lite');
@@ -49,7 +49,6 @@ export class AiService {
     let lastError: Error | undefined;
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        this.logger.log(`Calling Gemini (${geminiModel}), attempt ${attempt}...`);
         const raw = await this.requestGemini(prompt, geminiModel, geminiKey);
         const plan = this.parseAndValidate(raw, context);
         return {

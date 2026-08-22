@@ -16,7 +16,7 @@ import {
   Ionicons,
   MaterialCommunityIcons,
 } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { apiClient } from '@/lib/api-client';
 
 const COLORS = {
@@ -49,14 +49,53 @@ export function NutrioFeedback({
   meal,
   onBack,
 }: {
-  meal?: { name: string; type: string; calories: number } | null;
+  meal?: {
+    id?: string;
+    mealItemId?: string;
+    name?: string;
+    type?: string;
+    calories?: number;
+  } | null;
   onBack?: () => void;
 } = {}) {
   const router = useRouter();
+  const params = useLocalSearchParams<{
+    id?: string;
+    mealItemId?: string;
+    name?: string;
+    mealName?: string;
+    type?: string;
+    mealType?: string;
+    calories?: string;
+    mealCalories?: string;
+  }>();
 
-  const mealName = meal?.name || 'Quinoa Power Bowl';
-  const mealType = meal?.type || 'Lunch';
-  const mealCalories = meal?.calories || 520;
+  const mealItemId =
+    meal?.mealItemId ||
+    meal?.id ||
+    params.mealItemId ||
+    params.id ||
+    null;
+
+  const mealName =
+    meal?.name ||
+    params.mealName ||
+    params.name ||
+    'Healthy Meal';
+
+  const mealType =
+    meal?.type ||
+    params.mealType ||
+    params.type ||
+    'Meal';
+
+  const mealCalories =
+    meal?.calories ||
+    (params.mealCalories
+      ? Number(params.mealCalories)
+      : params.calories
+      ? Number(params.calories)
+      : 520);
 
   // Feedback Form States
   const [liked, setLiked] = useState<boolean | null>(true);
@@ -101,30 +140,42 @@ export function NutrioFeedback({
   const handleSubmit = async () => {
     setIsSubmitting(true);
     try {
-      // Post feedback to backend API
-      try {
-        await apiClient.post('/feedback', {
-          mealName: mealName,
-          mealType: mealType,
-          liked: liked,
-          rating: rating,
-          reasons: selectedReasons,
-          comment: comment,
-        });
-      } catch (backendError) {
-        console.log('Feedback API response note:', backendError);
-      }
+      await apiClient.post('/feedback', {
+        mealItemId: mealItemId && !mealItemId.startsWith('meal-') ? mealItemId : undefined,
+        mealName,
+        mealType,
+        liked,
+        rating,
+        reasons: selectedReasons,
+        comment,
+      });
 
       Alert.alert(
-        'Feedback Submitted! 🎉',
+        'Feedback Submitted!',
         'Thank you! Your feedback helps Nutrio AI personalize your upcoming meal plans.',
         [
           {
             text: 'Done',
-            onPress: handleBack,
+            onPress: () => {
+              if (onBack) onBack();
+              router.replace('/');
+            },
           },
         ]
       );
+
+      if (onBack) {
+        onBack();
+      } else {
+        router.replace('/');
+      }
+    } catch (err: any) {
+      console.error('Error submitting feedback:', err);
+      const msg =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to submit feedback. Please try again.';
+      Alert.alert('Notice', Array.isArray(msg) ? msg.join(', ') : msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -204,7 +255,6 @@ export function NutrioFeedback({
         {/* Question 1: Enjoy meal? */}
         <View style={styles.sectionBlock}>
           <View style={styles.sectionHeaderRow}>
-            <MaterialCommunityIcons name="sprout" size={16} color={COLORS.brand} />
             <Text style={styles.sectionQuestion}>Did you enjoy this meal?</Text>
           </View>
 

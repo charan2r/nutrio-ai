@@ -17,6 +17,7 @@ import { useAuthStore } from '@/lib/auth-store';
 
 export function NutrioLogin() {
   const [activeTab, setActiveTab] = useState<'signin' | 'create'>('signin');
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -29,6 +30,11 @@ export function NutrioLogin() {
 
   const handleAuth = async () => {
     setErrorMessage(null);
+
+    if (activeTab === 'create' && !fullName.trim()) {
+      setErrorMessage('Please enter your full name');
+      return;
+    }
 
     const cleanEmail = email.trim();
     if (!cleanEmail) {
@@ -58,7 +64,7 @@ export function NutrioLogin() {
       if (activeTab === 'signin') {
         await login({ email: cleanEmail, password });
       } else {
-        await register({ email: cleanEmail, password });
+        await register({ name: fullName.trim(), email: cleanEmail, password });
       }
       Alert.alert(
         'Success',
@@ -113,7 +119,7 @@ export function NutrioLogin() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Combined Hero Section: Brand + Welcome + Subtitle on Left, Salad Image on Right in Same Level */}
+          {/* Combined Hero Section */}
           <View style={styles.heroContainer}>
             <View style={styles.heroLeft}>
               {/* 1. Nutrio AI Brand */}
@@ -205,6 +211,26 @@ export function NutrioLogin() {
 
           {/* Input Fields */}
           <View style={styles.formContainer}>
+            {/* Full Name Field  */}
+            {activeTab === 'create' && (
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>Full Name</Text>
+                <View style={styles.inputCard}>
+                  <Feather name="user" size={19} color="#438E38" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="e.g. John Doe"
+                    placeholderTextColor="#8A99AD"
+                    value={fullName}
+                    onChangeText={setFullName}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                    underlineColorAndroid="transparent"
+                  />
+                </View>
+              </View>
+            )}
+
             {/* Email Field */}
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>Email</Text>

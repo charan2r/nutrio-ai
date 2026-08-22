@@ -47,8 +47,9 @@ export function NutrioPersonalization() {
   const router = useRouter();
 
   // Profile States
-  const [age, setAge] = useState<number>(28);
-  const [biologicalSex, setBiologicalSex] = useState<'male' | 'female' | 'prefer_not_to_say'>('prefer_not_to_say');
+  const [age, setAge] = useState<number>(26);
+  const [birthYear, setBirthYear] = useState<number>(new Date().getFullYear() - 26);
+  const [biologicalSex, setBiologicalSex] = useState<'male' | 'female' | 'prefer_not_to_say'>('male');
   const [heightCm, setHeightCm] = useState<number>(175);
   const [weightKg, setWeightKg] = useState<number>(68);
   const [goal, setGoal] = useState<'lose_weight' | 'maintain' | 'gain_weight'>('lose_weight');
@@ -59,7 +60,7 @@ export function NutrioPersonalization() {
   const [appetiteLevel, setAppetiteLevel] = useState<'low' | 'medium' | 'high'>('medium');
   const [mealsPerDay, setMealsPerDay] = useState<number>(3);
   const [dailyBudget, setDailyBudget] = useState<number>(600);
-  const [preferredCuisines, setPreferredCuisines] = useState<string[]>(['Indian', 'Sri Lankan']);
+  const [preferredCuisines, setPreferredCuisines] = useState<string[]>(['Sri Lankan']);
   const [excludedIngredients, setExcludedIngredients] = useState<string[]>(['Mushrooms', 'Celery']);
 
   // Allergies State
@@ -89,9 +90,12 @@ export function NutrioPersonalization() {
           if (p.activityLevel) setActivityLevel(p.activityLevel);
           if (p.biologicalSex) setBiologicalSex(p.biologicalSex);
           if (p.dateOfBirth) {
-            const birthYear = new Date(p.dateOfBirth).getFullYear();
+            const bYear = new Date(p.dateOfBirth).getFullYear();
             const currentYear = new Date().getFullYear();
-            if (!isNaN(birthYear)) setAge(currentYear - birthYear);
+            if (!isNaN(bYear) && bYear > 1920) {
+              setBirthYear(bYear);
+              setAge(currentYear - bYear);
+            }
           }
         }
 
@@ -155,8 +159,6 @@ export function NutrioPersonalization() {
   const handleSaveAndContinue = async () => {
     setIsSaving(true);
     try {
-      const currentYear = new Date().getFullYear();
-      const birthYear = currentYear - age;
       const dateOfBirth = `${birthYear}-01-15`;
 
       const profilePayload: UserProfileDto = {
@@ -212,6 +214,12 @@ export function NutrioPersonalization() {
   };
 
   // Helper labels
+  const getGenderLabel = (g: string) => {
+    if (g === 'male') return 'Male';
+    if (g === 'female') return 'Female';
+    return 'Prefer not to say';
+  };
+
   const getGoalLabel = (g: string) => {
     if (g === 'lose_weight') return 'Lose weight';
     if (g === 'gain_weight') return 'Gain weight';
@@ -307,13 +315,13 @@ export function NutrioPersonalization() {
           </View>
         </View>
 
-        {/* Section 1: Profile (Row 1: Age, Height | Row 2: Weight, Goal) */}
+        {/* Section 1: Profile (Row 1: DOB/Age, Gender | Row 2: Height, Weight | Row 3: Goal) */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Profile</Text>
           <Text style={styles.sectionSubtitle}>Tell us a bit about yourself.</Text>
 
           <View style={styles.grid}>
-            {/* Row 1, Col 1: Age */}
+            {/* Row 1, Col 1: Age / DOB */}
             <Pressable
               style={({ pressed }) => [styles.card, pressed && { opacity: 0.85 }]}
               onPress={() => setActiveModal('age')}
@@ -322,13 +330,28 @@ export function NutrioPersonalization() {
                 <Feather name="calendar" size={19} color={COLORS.iconColor} />
               </View>
               <View style={styles.cardCopy}>
-                <Text style={styles.cardLabel} numberOfLines={1} ellipsizeMode="tail">Age / Date of Birth</Text>
-                <Text style={styles.cardValue} numberOfLines={1} ellipsizeMode="tail">{age} years</Text>
+                <Text style={styles.cardLabel} numberOfLines={1} ellipsizeMode="tail">Age / Born</Text>
+                <Text style={styles.cardValue} numberOfLines={1} ellipsizeMode="tail">{age} yrs ({birthYear})</Text>
               </View>
               <Ionicons name="chevron-forward" size={16} color={COLORS.chevron} style={styles.cardChevron} />
             </Pressable>
 
-            {/* Row 1, Col 2: Height */}
+            {/* Row 1, Col 2: Biological Sex / Gender */}
+            <Pressable
+              style={({ pressed }) => [styles.card, pressed && { opacity: 0.85 }]}
+              onPress={() => setActiveModal('gender')}
+            >
+              <View style={styles.cardIcon}>
+                <Ionicons name="person-outline" size={19} color={COLORS.iconColor} />
+              </View>
+              <View style={styles.cardCopy}>
+                <Text style={styles.cardLabel} numberOfLines={1} ellipsizeMode="tail">Gender</Text>
+                <Text style={styles.cardValue} numberOfLines={1} ellipsizeMode="tail">{getGenderLabel(biologicalSex)}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={COLORS.chevron} style={styles.cardChevron} />
+            </Pressable>
+
+            {/* Row 2, Col 1: Height */}
             <Pressable
               style={({ pressed }) => [styles.card, pressed && { opacity: 0.85 }]}
               onPress={() => setActiveModal('height')}
@@ -347,7 +370,7 @@ export function NutrioPersonalization() {
               <Ionicons name="chevron-forward" size={16} color={COLORS.chevron} style={styles.cardChevron} />
             </Pressable>
 
-            {/* Row 2, Col 1: Weight */}
+            {/* Row 2, Col 2: Weight */}
             <Pressable
               style={({ pressed }) => [styles.card, pressed && { opacity: 0.85 }]}
               onPress={() => setActiveModal('weight')}
@@ -365,22 +388,22 @@ export function NutrioPersonalization() {
               </View>
               <Ionicons name="chevron-forward" size={16} color={COLORS.chevron} style={styles.cardChevron} />
             </Pressable>
-
-            {/* Row 2, Col 2: Goal */}
-            <Pressable
-              style={({ pressed }) => [styles.card, pressed && { opacity: 0.85 }]}
-              onPress={() => setActiveModal('goal')}
-            >
-              <View style={styles.cardIcon}>
-                <Feather name="target" size={19} color={COLORS.iconColor} />
-              </View>
-              <View style={styles.cardCopy}>
-                <Text style={styles.cardLabel} numberOfLines={1} ellipsizeMode="tail">Goal</Text>
-                <Text style={styles.cardValue} numberOfLines={1} ellipsizeMode="tail">{getGoalLabel(goal)}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={COLORS.chevron} style={styles.cardChevron} />
-            </Pressable>
           </View>
+
+          {/* Row 3: Goal */}
+          <Pressable
+            style={({ pressed }) => [styles.cardWide, { marginTop: 10 }, pressed && { opacity: 0.85 }]}
+            onPress={() => setActiveModal('goal')}
+          >
+            <View style={styles.cardIcon}>
+              <Feather name="target" size={19} color={COLORS.iconColor} />
+            </View>
+            <View style={styles.cardCopy}>
+              <Text style={styles.cardLabel} numberOfLines={1} ellipsizeMode="tail">Health Goal</Text>
+              <Text style={styles.cardValue} numberOfLines={1} ellipsizeMode="tail">{getGoalLabel(goal)}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={COLORS.chevron} style={styles.cardChevron} />
+          </Pressable>
         </View>
 
         {/* Section 2: Preferences (2x3 Grid + Excluded Ingredients Below) */}
@@ -471,7 +494,7 @@ export function NutrioPersonalization() {
               </View>
               <View style={styles.cardCopy}>
                 <Text style={styles.cardLabel} numberOfLines={1} ellipsizeMode="tail">Budget</Text>
-                <Text style={styles.cardValue} numberOfLines={1} ellipsizeMode="tail">₹400 - ₹700</Text>
+                <Text style={styles.cardValue} numberOfLines={1} ellipsizeMode="tail">LKR {dailyBudget}</Text>
               </View>
               <Ionicons name="chevron-forward" size={16} color={COLORS.chevron} style={styles.cardChevron} />
             </Pressable>
@@ -489,9 +512,9 @@ export function NutrioPersonalization() {
                 />
               </View>
               <View style={styles.cardCopy}>
-                <Text style={styles.cardLabel} numberOfLines={1} ellipsizeMode="tail">Preferred Cuisines</Text>
+                <Text style={styles.cardLabel} numberOfLines={1} ellipsizeMode="tail">Preferred Cuisine</Text>
                 <Text style={styles.cardValue} numberOfLines={1} ellipsizeMode="tail">
-                  {preferredCuisines.slice(0, 2).join(', ') || 'Indian, Mediterranean'}
+                  {preferredCuisines.join(', ') || 'Sri Lankan'}
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={16} color={COLORS.chevron} style={styles.cardChevron} />
@@ -586,22 +609,40 @@ export function NutrioPersonalization() {
 
       {/* --- EDIT MODALS --- */}
 
-      {/* Age Modal */}
+      {/* Age / Date of Birth Modal */}
       <Modal visible={activeModal === 'age'} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Select Age</Text>
+            <Text style={styles.modalTitle}>Date of Birth & Age</Text>
+            <Text style={{ fontSize: 12, color: COLORS.muted, textAlign: 'center', marginBottom: 12 }}>
+              Birth Year: {birthYear} ({age} years old)
+            </Text>
             <View style={styles.stepperRow}>
               <Pressable
                 style={styles.stepperBtn}
-                onPress={() => setAge((prev) => Math.max(12, prev - 1))}
+                onPress={() => {
+                  setAge((prev) => {
+                    const nextAge = Math.max(12, prev - 1);
+                    setBirthYear(new Date().getFullYear() - nextAge);
+                    return nextAge;
+                  });
+                }}
               >
                 <Ionicons name="remove" size={24} color="#333" />
               </Pressable>
-              <Text style={styles.stepperVal}>{age} years</Text>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={styles.stepperVal}>{age} years</Text>
+                <Text style={{ fontSize: 11, color: COLORS.brand, fontWeight: '700' }}>Born in {birthYear}</Text>
+              </View>
               <Pressable
                 style={styles.stepperBtn}
-                onPress={() => setAge((prev) => Math.min(100, prev + 1))}
+                onPress={() => {
+                  setAge((prev) => {
+                    const nextAge = Math.min(100, prev + 1);
+                    setBirthYear(new Date().getFullYear() - nextAge);
+                    return nextAge;
+                  });
+                }}
               >
                 <Ionicons name="add" size={24} color="#333" />
               </Pressable>
@@ -612,6 +653,37 @@ export function NutrioPersonalization() {
             >
               <Text style={styles.modalDoneBtnText}>Done</Text>
             </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Gender / Biological Sex Modal */}
+      <Modal visible={activeModal === 'gender'} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Select Gender</Text>
+            {(['male', 'female', 'prefer_not_to_say'] as const).map((g) => (
+              <Pressable
+                key={g}
+                style={[
+                  styles.optionBtn,
+                  biologicalSex === g && styles.optionBtnActive,
+                ]}
+                onPress={() => {
+                  setBiologicalSex(g);
+                  setActiveModal(null);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.optionBtnText,
+                    biologicalSex === g && styles.optionBtnTextActive,
+                  ]}
+                >
+                  {getGenderLabel(g)}
+                </Text>
+              </Pressable>
+            ))}
           </View>
         </View>
       </Modal>
@@ -834,7 +906,7 @@ export function NutrioPersonalization() {
       <Modal visible={activeModal === 'budget'} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Daily Budget (LKR / ₹)</Text>
+            <Text style={styles.modalTitle}>Daily Budget (LKR)</Text>
             <View style={styles.stepperRow}>
               <Pressable
                 style={styles.stepperBtn}
@@ -842,7 +914,7 @@ export function NutrioPersonalization() {
               >
                 <Ionicons name="remove" size={24} color="#333" />
               </Pressable>
-              <Text style={styles.stepperVal}>₹{dailyBudget} / day</Text>
+              <Text style={styles.stepperVal}>LKR {dailyBudget} / day</Text>
               <Pressable
                 style={styles.stepperBtn}
                 onPress={() => setDailyBudget((prev) => Math.min(5000, prev + 50))}
@@ -864,9 +936,9 @@ export function NutrioPersonalization() {
       <Modal visible={activeModal === 'cuisines'} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Preferred Cuisines</Text>
+            <Text style={styles.modalTitle}>Preferred Cuisine</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginVertical: 12 }}>
-              {['Sri Lankan', 'Indian', 'Mediterranean', 'Healthy Western', 'Chinese', 'Thai'].map((c) => {
+              {['Sri Lankan Traditional', 'Sri Lankan Coastal', 'Sri Lankan Village Style', 'Sri Lankan Vegetarian'].map((c) => {
                 const isSelected = preferredCuisines.includes(c);
                 return (
                   <Pressable

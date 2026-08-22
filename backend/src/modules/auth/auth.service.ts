@@ -14,7 +14,10 @@ import { LoginDto } from './dto/login';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register';
 
-export type SafeUser = Pick<User, 'id' | 'email' | 'createdAt' | 'updatedAt'>;
+export type SafeUser = Pick<
+  User,
+  'id' | 'email' | 'name' | 'createdAt' | 'updatedAt'
+>;
 type TokenPayload = { sub: string; email: string; type: 'access' | 'refresh' };
 
 @Injectable()
@@ -34,9 +37,13 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(dto.password, 12);
     try {
       const user = await this.users.save(
-        this.users.create({ email, passwordHash }),
+        this.users.create({
+          email,
+          name: dto.name?.trim() || null,
+          passwordHash,
+        }),
       );
-      return { user: this.toSafeUser(user) };
+      return this.createAuthResponse(user);
     } catch (error) {
       if ((error as { code?: string }).code === '23505') {
         throw new ConflictException(
@@ -144,6 +151,7 @@ export class AuthService {
     return {
       id: user.id,
       email: user.email,
+      name: user.name ?? null,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

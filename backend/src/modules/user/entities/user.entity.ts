@@ -22,6 +22,9 @@ export class User {
   @Column({ length: 255, unique: true })
   email: string;
 
+  @Column({ length: 255, nullable: true })
+  name: string | null;
+
   @Column()
   passwordHash: string;
 

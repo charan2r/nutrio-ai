@@ -19,6 +19,7 @@ import {
 } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { apiClient } from '@/lib/api-client';
+import { NutrioFeedback } from '../feedback/feedback';
 
 const COLORS = {
   brand: '#438e3b',
@@ -87,6 +88,13 @@ export function NutrioPlan({
   const [mealsByDay, setMealsByDay] = useState<{ [day: number]: FormattedMeal[] }>({});
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [selectedMealDetail, setSelectedMealDetail] = useState<FormattedMeal | null>(null);
+  const [feedbackMeal, setFeedbackMeal] = useState<{
+    id?: string;
+    mealItemId?: string;
+    name?: string;
+    type?: string;
+    calories?: number;
+  } | null>(null);
 
   useEffect(() => {
     async function fetchPlan() {
@@ -256,6 +264,15 @@ export function NutrioPlan({
 
   const dayNumbers = Array.from({ length: totalDays }, (_, i) => i + 1);
 
+  if (feedbackMeal) {
+    return (
+      <NutrioFeedback
+        meal={feedbackMeal}
+        onBack={() => setFeedbackMeal(null)}
+      />
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       {/* Background Pastel Blobs */}
@@ -300,7 +317,13 @@ export function NutrioPlan({
           <View style={styles.heroSection}>
             <Text style={styles.heroTitle}>
               Your {totalDays}-Day Meal Plan{' '}
-              <MaterialCommunityIcons name="sprout" size={20} color={COLORS.brand} />
+              <Image
+                source={require('@/assets/images/diet.png')}
+                style={{
+                  width:15,
+                  height:15
+                }}
+              />
             </Text>
             <Text style={styles.heroSubtitle}>Generated with AI Nutrition Engine</Text>
           </View>
@@ -609,12 +632,30 @@ export function NutrioPlan({
                   </View>
                 )}
 
-                <Pressable
-                  style={styles.modalDismissBtn}
-                  onPress={() => setSelectedMealDetail(null)}
-                >
-                  <Text style={styles.modalDismissBtnText}>Close</Text>
-                </Pressable>
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+                  <Pressable
+                    style={[styles.modalDismissBtn, { flex: 1, backgroundColor: '#F3F4F6', marginTop: 0 }]}
+                    onPress={() => setSelectedMealDetail(null)}
+                  >
+                    <Text style={[styles.modalDismissBtnText, { color: '#374151' }]}>Close</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.modalDismissBtn, { flex: 1, backgroundColor: COLORS.brand, marginTop: 0 }]}
+                    onPress={() => {
+                      const target = selectedMealDetail;
+                      setSelectedMealDetail(null);
+                      setFeedbackMeal({
+                        id: target.id,
+                        mealItemId: target.id,
+                        name: target.name,
+                        type: target.type,
+                        calories: target.caloriesNum,
+                      });
+                    }}
+                  >
+                    <Text style={[styles.modalDismissBtnText, { color: '#FFFFFF' }]}>Give Feedback</Text>
+                  </Pressable>
+                </View>
               </>
             )}
           </View>

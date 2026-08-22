@@ -5,13 +5,11 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
-  Unique,
   UpdateDateColumn,
 } from 'typeorm';
 import { User } from '../../user/entities/user.entity';
 import { MealItem } from '../../meal-items/entities/meal-item.entity';
 
-@Unique(['userId', 'mealItemId'])
 @Entity('feedback')
 export class Feedback {
   @PrimaryGeneratedColumn('uuid')
@@ -24,12 +22,18 @@ export class Feedback {
   @JoinColumn({ name: 'userId' })
   user: User;
 
-  @Column()
-  mealItemId: string;
+  @Column({ nullable: true })
+  mealItemId: string | null;
 
-  @ManyToOne(() => MealItem, (item) => item.feedbacks, { onDelete: 'CASCADE' })
+  @ManyToOne(() => MealItem, (item) => item.feedbacks, { nullable: true, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'mealItemId' })
-  mealItem: MealItem;
+  mealItem: MealItem | null;
+
+  @Column({ nullable: true })
+  mealName: string | null;
+
+  @Column({ nullable: true })
+  mealType: string | null;
 
   /** Optional: user liked or disliked the meal */
   @Column({ nullable: true })
