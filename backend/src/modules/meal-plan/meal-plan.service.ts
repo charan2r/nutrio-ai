@@ -107,7 +107,7 @@ export class MealPlanService {
         plan.totalCalories !== null ? Number(plan.totalCalories) : null,
       estimatedCostLkr:
         plan.estimatedCostLkr !== null ? Number(plan.estimatedCostLkr) : null,
-      itemCount: plan.items?.length ?? 0,
+      itemCount: plan.items ? plan.items.filter((it) => it.status !== 'replaced').length : 0,
       hasGroceryList: Boolean(plan.groceryList),
       createdAt: plan.createdAt,
     }));
@@ -127,6 +127,8 @@ export class MealPlanService {
     if (!plan) {
       throw new NotFoundException(`Meal plan with ID ${id} not found`);
     }
+
+    const activeItems = (plan.items || []).filter((it) => it.status !== 'replaced');
 
     return {
       id: plan.id,
@@ -151,7 +153,7 @@ export class MealPlanService {
       generationMeta: plan.generationMeta,
       createdAt: plan.createdAt,
       updatedAt: plan.updatedAt,
-      mealItems: plan.items || [],
+      mealItems: activeItems,
       groceryList: plan.groceryList || null,
     };
   }

@@ -29,6 +29,55 @@ export type Meal = {
 };
 export type GeneratedMealPlan = { days: { day: number; meals: Meal[] }[] };
 
+export type MealAlternativeContext = {
+  currentMeal: {
+    name: string;
+    mealType: string;
+    calories: number;
+    protein?: number;
+    carbs?: number;
+    fat?: number;
+    estimatedCostLkr?: number;
+  };
+  userProfile: {
+    age?: number;
+    biologicalSex?: string;
+    goal?: string;
+    activityLevel?: string;
+    dailyCalorieTarget?: number;
+  };
+  userPreferences: {
+    dietType?: string;
+    preferredCuisines?: string[];
+    excludedIngredients?: string[];
+    dislikedFoods?: string[];
+    dailyBudget?: number;
+  };
+  allergies: string[];
+  recentFeedbacks?: Array<{
+    mealName?: string;
+    liked?: boolean;
+    rating?: number;
+    reasonTags?: string[];
+    comment?: string;
+  }>;
+};
+
+export type GeneratedMealAlternative = {
+  id: string;
+  name: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  budgetLkr: number;
+  tags: string[];
+  ingredients: Array<{ name: string; quantity: number; unit: string }>;
+  instructions: string[];
+  bestMatch: boolean;
+  reason: string;
+};
+
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
@@ -67,6 +116,141 @@ export class AiService {
     throw new BadGatewayException(`Meal plan generation failed: ${lastError?.message || 'Unknown error'}`);
   }
 
+  /**
+   * Generates tailored AI replacement meal alternatives based on user profile, preferences & past feedback
+   */
+  async generateMealAlternatives(
+    context: MealAlternativeContext,
+  ): Promise<{ alternatives: GeneratedMealAlternative[]; model: string; provider: string }> {
+    const geminiKey = this.config.get<string>('GEMINI_API_KEY');
+
+    if (!geminiKey) {
+      throw new ServiceUnavailableException('Gemini API key is not configured');
+    }
+
+    const geminiModel = this.config.get<string>('GEMINI_MODEL', 'gemini-3.5-flash-lite');
+    const prompt = this.buildAlternativePrompt(context);
+
+    let lastError: Error | undefined;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const raw = await this.requestGemini(prompt, geminiModel, geminiKey);
+        const alternatives = this.parseAlternativeResponse(raw, context);
+        if (alternatives.length > 0) {
+          return {
+            alternatives,
+            model: geminiModel,
+            provider: 'gemini',
+          };
+        }
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        this.logger.warn(`Gemini alternative generation attempt ${attempt} failed: ${lastError.message}`);
+      }
+    }
+
+    throw new BadGatewayException(`Alternative meal generation failed: ${lastError?.message || 'Unknown error'}`);
+  }
+
+  private buildAlternativePrompt(context: MealAlternativeContext): string {
+    const { currentMeal, userProfile, userPreferences, allergies, recentFeedbacks } = context;
+
+    let feedbackSummary = 'None';
+    if (recentFeedbacks && recentFeedbacks.length > 0) {
+      feedbackSummary = recentFeedbacks
+        .map(
+          (f) =>
+            `- Meal: "${f.mealName || 'Dish'}", Liked: ${f.liked ? 'Yes' : 'No'}, Rating: ${f.rating || 'N/A'}/5, Issues: [${(f.reasonTags || []).join(', ')}], Note: "${f.comment || ''}"`,
+        )
+        .join('\n');
+    }
+
+    return `You are an expert clinical dietitian and Sri Lankan nutrition specialist.
+A user wants to replace their current ${currentMeal.mealType} dish: "${currentMeal.name}" (${currentMeal.calories} kcal).
+
+USER PROFILE & CONSTRAINTS:
+- Goal: ${userProfile.goal || 'Healthy Living'}
+- Diet Type: ${userPreferences.dietType || 'Balanced'}
+- Daily Calorie Target: ${userProfile.dailyCalorieTarget || 2000} kcal
+- Daily Budget: LKR ${userPreferences.dailyBudget || 700}
+- Allergies / Strict Avoidance: [${allergies.join(', ') || 'None'}]
+- Excluded Ingredients: [${(userPreferences.excludedIngredients || []).join(', ') || 'None'}]
+- Disliked Foods: [${(userPreferences.dislikedFoods || []).join(', ') || 'None'}]
+- Preferred Cuisines / Flavors: [${(userPreferences.preferredCuisines || []).join(', ') || 'Sri Lankan, Healthy'}]
+
+USER HISTORICAL FEEDBACK & PREFERENCES:
+${feedbackSummary}
+
+TASK:
+Generate exactly 3 DISTINCT, healthier, practical Sri Lankan / healthy fusion alternative meals for this ${currentMeal.mealType}.
+- Each alternative must respect all allergies, dislikes, and feedback (e.g. if user complained about too spicy, make dishes mild; if too expensive, keep cost low).
+- Alternative 1 should be the "Best Match" (optimal macro balance and goal alignment).
+- Alternative 2 should offer a distinct protein/carb twist (e.g. high protein plant-based or lean poultry).
+- Alternative 3 should be high in fiber and cost-effective.
+
+Return ONLY valid JSON matching this exact structure with no markdown or formatting outside the JSON:
+{
+  "alternatives": [
+    {
+      "name": "Dish Name",
+      "calories": 420,
+      "protein": 28,
+      "carbs": 45,
+      "fat": 12,
+      "budgetLkr": 180,
+      "tags": ["High Protein", "Gluten Free"],
+      "ingredients": [
+        { "name": "Ingredient 1", "quantity": 100, "unit": "g" },
+        { "name": "Ingredient 2", "quantity": 1, "unit": "cup" }
+      ],
+      "instructions": [
+        "Step 1...",
+        "Step 2..."
+      ],
+      "bestMatch": true,
+      "reason": "Clear explanation of why this is a superior replacement for the user's goal"
+    }
+  ]
+}`;
+  }
+
+  private parseAlternativeResponse(
+    raw: string,
+    context: MealAlternativeContext,
+  ): GeneratedMealAlternative[] {
+    let parsed: any;
+    try {
+      const cleaned = raw.replace(/^```(?:json)?\s*|```$/g, '').trim();
+      parsed = JSON.parse(cleaned);
+    } catch {
+      return [];
+    }
+
+    const items = Array.isArray(parsed?.alternatives) ? parsed.alternatives : [];
+    return items.slice(0, 3).map((alt: any, idx: number) => ({
+      id: `ai-alt-${idx + 1}`,
+      name: String(alt.name || 'Nutritious Bowl'),
+      calories: Math.max(200, Math.round(Number(alt.calories) || 400)),
+      protein: Math.max(5, Math.round(Number(alt.protein) || 25)),
+      carbs: Math.max(10, Math.round(Number(alt.carbs) || 45)),
+      fat: Math.max(2, Math.round(Number(alt.fat) || 12)),
+      budgetLkr: Math.max(50, Math.round(Number(alt.budgetLkr) || 180)),
+      tags: Array.isArray(alt.tags) && alt.tags.length > 0 ? alt.tags.map(String) : ['High Protein', 'Balanced'],
+      ingredients: Array.isArray(alt.ingredients)
+        ? alt.ingredients.map((ing: any) => ({
+            name: String(ing.name || 'Ingredient'),
+            quantity: Number(ing.quantity) || 1,
+            unit: String(ing.unit || 'g'),
+          }))
+        : [{ name: 'Fresh Ingredients', quantity: 1, unit: 'portion' }],
+      instructions: Array.isArray(alt.instructions)
+        ? alt.instructions.map(String)
+        : ['Rinse and prepare ingredients.', 'Cook in pan with light tempering spices.', 'Serve fresh and warm.'],
+      bestMatch: idx === 0 || Boolean(alt.bestMatch),
+      reason: String(alt.reason || 'Optimal nutrition density fitting your calorie budget.'),
+    }));
+  }
+
   private async requestGemini(prompt: string, model: string, apiKey: string): Promise<string> {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     let response: Response;
@@ -78,7 +262,7 @@ export class AiService {
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             responseMimeType: 'application/json',
-            temperature: 0.2,
+            temperature: 0.3,
           },
         }),
       });
@@ -99,6 +283,9 @@ export class AiService {
     return content;
   }
 
+  /**
+   * Generates tailored AI meal plans
+   */
   private buildPrompt(context: MealPlanGenerationContext) {
     let verifiedMealsSection = '';
     if (context.verifiedMeals && context.verifiedMeals.length > 0) {

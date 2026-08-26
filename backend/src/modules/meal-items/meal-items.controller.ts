@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Post,
   Patch,
   Param,
   Body,
@@ -9,6 +10,7 @@ import {
 import { MealItemsService } from './meal-items.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser, JwtUser } from '../user/user.decorator';
+import { ReplaceMealItemDto } from './dto/replace-meal-item.dto';
 
 @Controller('meal-items')
 @UseGuards(AuthGuard)
@@ -33,6 +35,20 @@ export class MealItemsController {
       status,
       consumedServings,
     );
+  }
+
+  @Get(':id/alternatives')
+  getAlternatives(@CurrentUser() user: JwtUser, @Param('id') id: string) {
+    return this.mealItemsService.getAlternatives(user.id, id);
+  }
+
+  @Post(':id/replace')
+  replaceMealItem(
+    @CurrentUser() user: JwtUser,
+    @Param('id') id: string,
+    @Body() replaceDto: ReplaceMealItemDto,
+  ) {
+    return this.mealItemsService.replaceMealItem(user.id, id, replaceDto);
   }
 
   @Get(':id')

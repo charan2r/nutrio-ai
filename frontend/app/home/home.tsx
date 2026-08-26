@@ -28,6 +28,8 @@ import { NutrioGenerate } from '../generate/generate';
 import { NutrioPlan } from '../plan/plan';
 import { NutrioGrocery } from '../grocery/grocery';
 import { NutrioFeedback } from '../feedback/feedback';
+import { NutrioHistory } from '../history/history';
+import { NutrioReplace } from '../replace/replace';
 
 const COLORS = {
   brand: '#438e3b',
@@ -81,8 +83,10 @@ export function NutrioHome() {
   const [activeTab, setActiveTab] = useState<'home' | 'plans' | 'grocery' | 'profile'>('home');
   const [showPlanDetail, setShowPlanDetail] = useState<boolean>(false);
   const [showFeedback, setShowFeedback] = useState<boolean>(false);
+  const [showHistory, setShowHistory] = useState<boolean>(false);
   const [showProfileDrawer, setShowProfileDrawer] = useState<boolean>(false);
   const [selectedMealForDetail, setSelectedMealForDetail] = useState<TodayMeal | null>(null);
+  const [selectedMealForReplace, setSelectedMealForReplace] = useState<any | null>(null);
   const [selectedMealForFeedback, setSelectedMealForFeedback] = useState<{
     id?: string;
     mealItemId?: string;
@@ -197,8 +201,8 @@ export function NutrioHome() {
                 setPlanTotalDays(planDuration);
 
                
-                const todaysDayItems = items.filter((it: any) => Number(it.day) === activeDay);
-                const mealsToShow = todaysDayItems.length > 0 ? todaysDayItems : items.slice(0, 3);
+                const todaysDayItems = items.filter((it: any) => Number(it.day) === activeDay && it.status !== 'replaced');
+                const mealsToShow = todaysDayItems.length > 0 ? todaysDayItems : items.filter((it: any) => it.status !== 'replaced').slice(0, 3);
 
                 const formatted: TodayMeal[] = mealsToShow.map((it: any, idx: number) => {
                   const snap = it.generatedMealSnapshot || it.meal || {};
@@ -354,11 +358,49 @@ export function NutrioHome() {
   );
   const caloriesRemaining = Math.max(0, calorieTarget - caloriesConsumed);
 
+  if (selectedMealForReplace) {
+    return (
+      <NutrioReplace
+        currentMeal={selectedMealForReplace}
+        onBack={() => setSelectedMealForReplace(null)}
+        onMealReplaced={() => {
+          setSelectedMealForReplace(null);
+          setSelectedMealForDetail(null);
+          setActiveTab('home');
+          loadDashboardData();
+        }}
+      />
+    );
+  }
+
   if (showFeedback) {
     return (
       <NutrioFeedback
         meal={selectedMealForFeedback}
         onBack={() => setShowFeedback(false)}
+      />
+    );
+  }
+
+  if (showHistory) {
+    return (
+      <NutrioHistory
+        onBack={() => {
+          setShowHistory(false);
+          loadDashboardData();
+        }}
+        onNavigateHome={() => {
+          setShowHistory(false);
+          setActiveTab('home');
+        }}
+        onNavigateGrocery={() => {
+          setShowHistory(false);
+          setActiveTab('grocery');
+        }}
+        onNavigateProfile={() => {
+          setShowHistory(false);
+          setShowProfileDrawer(true);
+        }}
       />
     );
   }
@@ -881,6 +923,20 @@ export function NutrioHome() {
                 style={({ pressed }) => [styles.profileActionRow, pressed && { opacity: 0.7 }]}
                 onPress={() => {
                   setShowProfileDrawer(false);
+                  setShowHistory(true);
+                }}
+              >
+                <View style={[styles.actionIconBg, { backgroundColor: COLORS.iconBgGreen }]}>
+                  <Feather name="calendar" size={17} color={COLORS.brand} />
+                </View>
+                <Text style={styles.actionRowText}>Plan History</Text>
+                <Ionicons name="chevron-forward" size={16} color={COLORS.chevron} />
+              </Pressable>
+
+              <Pressable
+                style={({ pressed }) => [styles.profileActionRow, pressed && { opacity: 0.7 }]}
+                onPress={() => {
+                  setShowProfileDrawer(false);
                   setActiveTab('plans');
                 }}
               >
@@ -1027,7 +1083,7 @@ export function NutrioHome() {
                   )}
                 </ScrollView>
 
-                <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
                   <Pressable
                     style={[styles.modalDismissBtn, { flex: 1, backgroundColor: '#F3F4F6', marginTop: 0 }]}
                     onPress={() => setSelectedMealForDetail(null)}
@@ -1035,14 +1091,33 @@ export function NutrioHome() {
                     <Text style={[styles.modalDismissBtnText, { color: '#374151' }]}>Close</Text>
                   </Pressable>
                   <Pressable
-                    style={[styles.modalDismissBtn, { flex: 1, backgroundColor: COLORS.brand, marginTop: 0 }]}
+                    style={[
+                      styles.modalDismissBtn,
+                      {
+                        flex: 1.2,
+                        backgroundColor: '#edf6e5',
+                        borderWidth: 1,
+                        borderColor: '#cde4c2',
+                        marginTop: 0,
+                      },
+                    ]}
+                    onPress={() => {
+                      const target = selectedMealForDetail;
+                      setSelectedMealForDetail(null);
+                      setSelectedMealForReplace(target);
+                    }}
+                  >
+                    <Text style={[styles.modalDismissBtnText, { color: '#285d2b' }]}>Replace Meal</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.modalDismissBtn, { flex: 1.2, backgroundColor: COLORS.brand, marginTop: 0 }]}
                     onPress={() => {
                       const target = selectedMealForDetail;
                       setSelectedMealForDetail(null);
                       openFeedbackForMeal(target);
                     }}
                   >
-                    <Text style={[styles.modalDismissBtnText, { color: '#FFFFFF' }]}>Give Feedback</Text>
+                    <Text style={[styles.modalDismissBtnText, { color: '#FFFFFF' }]}>Feedback</Text>
                   </Pressable>
                 </View>
               </>
