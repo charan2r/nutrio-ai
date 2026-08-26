@@ -18,6 +18,7 @@ import {
 } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { apiClient } from '@/lib/api-client';
+import { showToast } from '@/lib/toast-store';
 
 const COLORS = {
   brand: '#438e3b',
@@ -150,19 +151,7 @@ export function NutrioFeedback({
         comment,
       });
 
-      Alert.alert(
-        'Feedback Submitted!',
-        'Thank you! Your feedback helps Nutrio AI personalize your upcoming meal plans.',
-        [
-          {
-            text: 'Done',
-            onPress: () => {
-              if (onBack) onBack();
-              router.replace('/');
-            },
-          },
-        ]
-      );
+      showToast('Feedback submitted! Your preferences will guide future plans.', 'success');
 
       if (onBack) {
         onBack();
@@ -175,7 +164,7 @@ export function NutrioFeedback({
         err.response?.data?.message ||
         err.message ||
         'Failed to submit feedback. Please try again.';
-      Alert.alert('Notice', Array.isArray(msg) ? msg.join(', ') : msg);
+      showToast(Array.isArray(msg) ? msg.join(', ') : msg, 'error');
     } finally {
       setIsSubmitting(false);
     }

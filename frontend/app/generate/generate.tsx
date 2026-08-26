@@ -20,6 +20,7 @@ import {
 import { useRouter } from 'expo-router';
 import { apiClient } from '@/lib/api-client';
 import { useAuthStore } from '@/lib/auth-store';
+import { showToast } from '@/lib/toast-store';
 import { NutrioPlan } from '../plan/plan';
 
 const COLORS = {
@@ -162,13 +163,14 @@ export function NutrioGenerate({ onBack }: { onBack?: () => void } = {}) {
       });
       setGeneratedPlan(response.data);
       setShowGeneratedPlan(true);
+      showToast('Meal plan generated successfully! 🎉', 'success');
     } catch (err: any) {
       console.log('Error generating meal plan:', err);
       const msg =
         err.response?.data?.message ||
         err.message ||
         'Could not generate meal plan. Please ensure your profile and preferences are complete.';
-      Alert.alert('Generation Notice', Array.isArray(msg) ? msg.join(', ') : msg);
+      showToast(Array.isArray(msg) ? msg.join(', ') : msg, 'error');
     } finally {
       setIsGenerating(false);
     }

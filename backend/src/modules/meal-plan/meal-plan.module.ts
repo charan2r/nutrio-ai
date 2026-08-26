@@ -14,6 +14,7 @@ import { GroceryList } from '../grocery-list/entities/grocery-list.entity';
 import { GroceryListModule } from '../grocery-list/grocery-list.module';
 import { ValidationModule } from '../validation/validation.module';
 import { MealItem } from '../meal-items/entities/meal-item.entity';
+import { Feedback } from '../feedback/entities/feedback.entity';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { MealItem } from '../meal-items/entities/meal-item.entity';
       MealItem,
       Meal,
       GroceryList,
+      Feedback,
     ]),
     AiModule,
     ValidationModule,

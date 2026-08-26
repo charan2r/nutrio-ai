@@ -18,6 +18,12 @@ import {
 } from '@expo/vector-icons';
 import { apiClient } from '@/lib/api-client';
 import { useAuthStore } from '@/lib/auth-store';
+import { showToast } from '@/lib/toast-store';
+import {
+  getActivePlanDay,
+  getPlanDayDateString,
+  parseYMD,
+} from '@/lib/date-utils';
 import { NutrioGenerate } from '../generate/generate';
 import { NutrioPlan } from '../plan/plan';
 import { NutrioGrocery } from '../grocery/grocery';
@@ -63,6 +69,10 @@ type TodayMeal = {
   carbs: number;
   fat: number;
   cost: number | null;
+  prepTime: number | null;
+  description?: string;
+  ingredients?: Array<{ name: string; quantity: number; unit: string }>;
+  instructions?: string[];
   image: any;
 };
 
@@ -72,6 +82,7 @@ export function NutrioHome() {
   const [showPlanDetail, setShowPlanDetail] = useState<boolean>(false);
   const [showFeedback, setShowFeedback] = useState<boolean>(false);
   const [showProfileDrawer, setShowProfileDrawer] = useState<boolean>(false);
+  const [selectedMealForDetail, setSelectedMealForDetail] = useState<TodayMeal | null>(null);
   const [selectedMealForFeedback, setSelectedMealForFeedback] = useState<{
     id?: string;
     mealItemId?: string;
@@ -87,6 +98,8 @@ export function NutrioHome() {
   const [userGoal, setUserGoal] = useState<string>('Weight Gain');
   const [userDiet, setUserDiet] = useState<string>('High Protein');
   const [latestPlan, setLatestPlan] = useState<any>(null);
+  const [currentActiveDay, setCurrentActiveDay] = useState<number>(1);
+  const [planTotalDays, setPlanTotalDays] = useState<number>(3);
   const [todaysMeals, setTodaysMeals] = useState<TodayMeal[]>([]);
   const [completedMealIds, setCompletedMealIds] = useState<{ [id: string]: boolean }>({});
   const [groceryCount, setGroceryCount] = useState<number>(0);
@@ -139,64 +152,132 @@ export function NutrioHome() {
       setCalorieTarget(targetCal);
       setDailyBudget(targetBud);
 
+      let foundActivePlan = false;
+
       if (
         plansRes.status === 'fulfilled' &&
         Array.isArray(plansRes.value.data) &&
         plansRes.value.data.length > 0
       ) {
-        const firstPlanSummary = plansRes.value.data[0];
-        setLatestPlan(firstPlanSummary);
+        // Iterate to find the plan currently active today (not expired, not future)
+        for (const planSummary of plansRes.value.data) {
+          try {
+            const detailRes = await apiClient.get(`/meal-plans/${planSummary.id}`);
+            const planDetail = detailRes.data;
 
-        // Fetch full plan with its mealItems
-        try {
-          const detailRes = await apiClient.get(`/meal-plans/${firstPlanSummary.id}`);
-          const planDetail = detailRes.data;
+            if (planDetail) {
+              const items: any[] = planDetail.items || planDetail.mealItems || [];
+              let maxDay = 0;
+              items.forEach((it: any) => {
+                const d = Number(it.day) || 1;
+                if (d > maxDay) maxDay = d;
+              });
 
-          if (planDetail) {
-            setLatestPlan(planDetail);
+              let dateDuration = 0;
+              if (planDetail.startDate && planDetail.endDate) {
+                const s = parseYMD(planDetail.startDate);
+                const e = parseYMD(planDetail.endDate);
+                if (s && e) {
+                  const sUtc = Date.UTC(s.year, s.month, s.date);
+                  const eUtc = Date.UTC(e.year, e.month, e.date);
+                  if (eUtc >= sUtc) {
+                    dateDuration = Math.round((eUtc - sUtc) / (1000 * 60 * 60 * 24)) + 1;
+                  }
+                }
+              }
 
-            const items: any[] = planDetail.items || planDetail.mealItems || [];
-            // Filter Day 1 meals as today's meals
-            const day1Items = items.filter((it: any) => Number(it.day) === 1);
-            const mealsToShow = day1Items.length > 0 ? day1Items : items.slice(0, 3);
+              const planDuration = Math.max(maxDay, dateDuration, 1);
+              const activeDay = getActivePlanDay(planDetail.startDate, planDuration);
 
-            const formatted: TodayMeal[] = mealsToShow.map((it: any, idx: number) => {
-              const snap = it.generatedMealSnapshot || it.meal || {};
-              const mealType = it.mealType || snap.mealType || 'lunch';
-              const capType = mealType.charAt(0).toUpperCase() + mealType.slice(1);
-              const cals = Math.round(Number(it.caloriesSnapshot ?? snap.calories ?? 500));
-              const prot = Math.round(Number(it.proteinSnapshot ?? snap.protein ?? 30));
-              const carbs = Math.round(Number(it.carbsSnapshot ?? snap.carbs ?? 60));
-              const fat = Math.round(Number(it.fatSnapshot ?? snap.fat ?? 15));
-              const cost = it.estimatedCostSnapshot ?? snap.estimatedCostLkr ?? null;
+             
+              if (activeDay !== null) {
+                foundActivePlan = true;
+                setLatestPlan(planDetail);
+                setCurrentActiveDay(activeDay);
+                setPlanTotalDays(planDuration);
 
-              return {
-                id: it.id || `meal-${idx}`,
-                type: capType,
-                name: snap.name || it.name || 'Sri Lankan Meal',
-                calories: cals,
-                protein: prot,
-                carbs,
-                fat,
-                cost: cost ? Math.round(Number(cost)) : null,
-                image: FOOD_IMAGES[idx % FOOD_IMAGES.length],
-              };
-            });
+               
+                const todaysDayItems = items.filter((it: any) => Number(it.day) === activeDay);
+                const mealsToShow = todaysDayItems.length > 0 ? todaysDayItems : items.slice(0, 3);
 
-            setTodaysMeals(formatted);
+                const formatted: TodayMeal[] = mealsToShow.map((it: any, idx: number) => {
+                  const snap = it.generatedMealSnapshot || it.meal || {};
+                  const mealType = it.mealType || snap.mealType || 'lunch';
+                  const capType = mealType.charAt(0).toUpperCase() + mealType.slice(1);
+                  const cals = Math.round(Number(it.caloriesSnapshot ?? snap.calories ?? 500));
+                  const prot = Math.round(Number(it.proteinSnapshot ?? snap.protein ?? 30));
+                  const carbs = Math.round(Number(it.carbsSnapshot ?? snap.carbs ?? 60));
+                  const fat = Math.round(Number(it.fatSnapshot ?? snap.fat ?? 15));
+                  const cost = it.estimatedCostSnapshot ?? snap.estimatedCostLkr ?? null;
+                  const prepTime = snap.prepTimeMinutes ? Number(snap.prepTimeMinutes) : 20;
 
-            // Compute protein target from meals if available
-            const totalDayProtein = formatted.reduce((sum, m) => sum + m.protein, 0);
-            if (totalDayProtein > 0) setProteinTarget(totalDayProtein);
+                  const instructions =
+                    Array.isArray(snap.instructions) && snap.instructions.length > 0
+                      ? snap.instructions
+                      : typeof snap.recipe === 'string' && snap.recipe.trim()
+                        ? snap.recipe
+                            .split('\n')
+                            .map((s: string) => s.replace(/^\d+[\.\)]\s*/, '').trim())
+                            .filter(Boolean)
+                        : [
+                            `Rinse and prepare fresh ingredients for ${snap.name || it.name || 'this dish'}.`,
+                            `Heat pan or clay pot with a small amount of oil, temper aromatics and spices.`,
+                            `Combine main ingredients and simmer gently until cooked thoroughly.`,
+                            `Season to taste and serve fresh with recommended portions.`,
+                          ];
 
-            // Check if grocery list exists
-            if (planDetail.groceryList?.items) {
-              setGroceryCount(planDetail.groceryList.items.length);
+                  return {
+                    id: it.id || `meal-${idx}`,
+                    type: capType,
+                    name: snap.name || it.name || 'Sri Lankan Meal',
+                    calories: cals,
+                    protein: prot,
+                    carbs,
+                    fat,
+                    cost: cost ? Math.round(Number(cost)) : null,
+                    prepTime,
+                    description: snap.description || snap.name || 'Balanced nutritious meal',
+                    ingredients: Array.isArray(snap.ingredients) ? snap.ingredients : [],
+                    instructions,
+                    image: FOOD_IMAGES[idx % FOOD_IMAGES.length],
+                  };
+                });
+
+                // Initialize completed meal statuses from database
+                const initialCompletedMap: { [id: string]: boolean } = {};
+                mealsToShow.forEach((it: any) => {
+                  if (it.id && it.status === 'completed') {
+                    initialCompletedMap[it.id] = true;
+                  }
+                });
+                setCompletedMealIds(initialCompletedMap);
+
+                setTodaysMeals(formatted);
+
+                // Compute protein target from meals if available
+                const totalDayProtein = formatted.reduce((sum, m) => sum + m.protein, 0);
+                if (totalDayProtein > 0) setProteinTarget(totalDayProtein);
+
+                // Check if grocery list exists
+                if (planDetail.groceryList?.items) {
+                  setGroceryCount(planDetail.groceryList.items.length);
+                }
+
+                // Stop at the first currently active plan
+                break;
+              }
             }
+          } catch (err) {
+            console.log('Error fetching plan items detail:', err);
           }
-        } catch (err) {
-          console.log('Error fetching plan items detail:', err);
         }
+      }
+
+      // If no plan is active today (all expired or empty), clear active state so user sees empty state
+      if (!foundActivePlan) {
+        setLatestPlan(null);
+        setTodaysMeals([]);
+        setGroceryCount(0);
       }
     } catch (err) {
       console.log('Error loading dashboard data:', err);
@@ -209,8 +290,25 @@ export function NutrioHome() {
     loadDashboardData();
   }, []);
 
-  const toggleMealComplete = (id: string) => {
-    setCompletedMealIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  const toggleMealComplete = async (id: string) => {
+    const willBeCompleted = !completedMealIds[id];
+
+    // Optimistically update UI
+    setCompletedMealIds((prev) => ({ ...prev, [id]: willBeCompleted }));
+
+    try {
+      await apiClient.patch(`/meal-items/${id}/toggle`);
+      if (willBeCompleted) {
+        showToast('Meal marked as eaten! Calories & progress updated.', 'success');
+      } else {
+        showToast('Meal marked as pending.', 'info');
+      }
+    } catch (err) {
+      console.log('Error toggling meal item status:', err);
+      // Revert optimistic state
+      setCompletedMealIds((prev) => ({ ...prev, [id]: !willBeCompleted }));
+      showToast('Could not update meal status. Please check your connection.', 'error');
+    }
   };
 
   const openFeedbackForMeal = (meal: TodayMeal) => {
@@ -451,12 +549,12 @@ export function NutrioHome() {
               <View style={styles.planScorePill}>
                 <Ionicons name="sparkles" size={11} color="#285d2b" />
                 <Text style={styles.planScoreText}>
-                  AI Score {latestPlan.qualityScore || 86}/100
+                  Day {currentActiveDay} of {planTotalDays} • AI Score {latestPlan.qualityScore || 86}/100
                 </Text>
               </View>
               <Text style={styles.bannerTitle}>Active Meal Plan</Text>
               <Text style={styles.bannerSubtitle}>
-                {latestPlan.startDate || 'Current'} • Tap to view full plan & recipes
+                {getPlanDayDateString(latestPlan.startDate, currentActiveDay) ? `${getPlanDayDateString(latestPlan.startDate, currentActiveDay)} (Today)` : 'Current Plan'} • Tap to view full plan & recipes
               </Text>
             </View>
 
@@ -478,7 +576,7 @@ export function NutrioHome() {
             onPress={() => setActiveTab('plans')}
           >
             <View style={styles.bannerLeft}>
-              <Text style={styles.bannerTitle}>Generate 3-Day{'\n'}Meal Plan</Text>
+              <Text style={styles.bannerTitle}>Generate Meal Plan</Text>
               <Text style={styles.bannerSubtitle}>
                 Personalized meals,{'\n'}goals and grocery list.
               </Text>
@@ -500,7 +598,14 @@ export function NutrioHome() {
 
         {/* Today's Meals Section Header */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Today&apos;s Meals</Text>
+          <View>
+            <Text style={styles.sectionTitle}>Today&apos;s Meals</Text>
+            {latestPlan && (
+              <Text style={{ fontSize: 12, color: COLORS.muted, fontWeight: '500', marginTop: 2 }}>
+                Day {currentActiveDay} of {planTotalDays} {getPlanDayDateString(latestPlan.startDate, currentActiveDay) ? `(${getPlanDayDateString(latestPlan.startDate, currentActiveDay)})` : ''}
+              </Text>
+            )}
+          </View>
           {latestPlan && (
             <Pressable onPress={() => setShowPlanDetail(true)}>
               <Text style={styles.viewAllText}>View all</Text>
@@ -517,7 +622,7 @@ export function NutrioHome() {
                 <View key={meal.id} style={styles.mealCard}>
                   <Pressable
                     style={styles.mealImageContainer}
-                    onPress={() => openFeedbackForMeal(meal)}
+                    onPress={() => setSelectedMealForDetail(meal)}
                   >
                     <Image
                       source={meal.image}
@@ -547,7 +652,7 @@ export function NutrioHome() {
                   <View style={styles.mealCardBody}>
                     <Pressable
                       style={{ flex: 1 }}
-                      onPress={() => openFeedbackForMeal(meal)}
+                      onPress={() => setSelectedMealForDetail(meal)}
                     >
                       <Text style={styles.mealTypeName}>{meal.type}</Text>
                       <Text style={styles.mealDishName} numberOfLines={1}>
@@ -790,7 +895,7 @@ export function NutrioHome() {
                 style={({ pressed }) => [styles.profileActionRow, pressed && { opacity: 0.7 }]}
                 onPress={() => {
                   loadDashboardData();
-                  Alert.alert('Refreshed', 'Dashboard nutrition metrics updated from database.');
+                  showToast('Dashboard nutrition data refreshed!', 'success');
                 }}
               >
                 <View style={[styles.actionIconBg, { backgroundColor: COLORS.iconBgBlue }]}>
@@ -825,6 +930,125 @@ export function NutrioHome() {
             </Pressable>
           </Pressable>
         </Pressable>
+      </Modal>
+
+      {/* Meal Detail & Recipe Modal */}
+      <Modal visible={!!selectedMealForDetail} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {selectedMealForDetail && (
+              <>
+                <View style={styles.modalHeader}>
+                  <View style={styles.modalMealTypeBadge}>
+                    <Text style={styles.modalMealTypeText}>{selectedMealForDetail.type}</Text>
+                  </View>
+                  <Pressable
+                    style={styles.modalCloseBtn}
+                    onPress={() => setSelectedMealForDetail(null)}
+                  >
+                    <Ionicons name="close" size={20} color="#333" />
+                  </Pressable>
+                </View>
+
+                <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 460 }}>
+                  <Image
+                    source={selectedMealForDetail.image}
+                    style={styles.modalImage}
+                    resizeMode="cover"
+                  />
+
+                  <Text style={styles.modalMealTitle}>{selectedMealForDetail.name}</Text>
+                  <Text style={styles.modalMealDesc}>{selectedMealForDetail.description}</Text>
+
+                  {/* Prep Time & Cost Row */}
+                  <View style={styles.modalInfoPillRow}>
+                    <View style={styles.modalInfoPill}>
+                      <Ionicons name="time-outline" size={13} color={COLORS.brand} />
+                      <Text style={styles.modalInfoPillText}>
+                        Prep: {selectedMealForDetail.prepTime ? `${selectedMealForDetail.prepTime} mins` : '20 mins'}
+                      </Text>
+                    </View>
+                    {selectedMealForDetail.cost && (
+                      <View style={styles.modalInfoPill}>
+                        <MaterialCommunityIcons name="wallet-outline" size={13} color={COLORS.brand} />
+                        <Text style={styles.modalInfoPillText}>LKR {selectedMealForDetail.cost}</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Macro Strip */}
+                  <View style={styles.modalMacroRow}>
+                    <View style={styles.modalMacroItem}>
+                      <Text style={styles.modalMacroVal}>{selectedMealForDetail.calories}</Text>
+                      <Text style={styles.modalMacroLabel}>Calories</Text>
+                    </View>
+                    <View style={styles.modalMacroItem}>
+                      <Text style={styles.modalMacroVal}>{selectedMealForDetail.protein}g</Text>
+                      <Text style={styles.modalMacroLabel}>Protein</Text>
+                    </View>
+                    <View style={styles.modalMacroItem}>
+                      <Text style={styles.modalMacroVal}>{selectedMealForDetail.carbs}g</Text>
+                      <Text style={styles.modalMacroLabel}>Carbs</Text>
+                    </View>
+                    <View style={styles.modalMacroItem}>
+                      <Text style={styles.modalMacroVal}>{selectedMealForDetail.fat}g</Text>
+                      <Text style={styles.modalMacroLabel}>Fats</Text>
+                    </View>
+                  </View>
+
+                  {/* Ingredients List */}
+                  {selectedMealForDetail.ingredients && selectedMealForDetail.ingredients.length > 0 && (
+                    <View style={styles.modalIngredientsBox}>
+                      <Text style={styles.modalIngredientsTitle}>Ingredients:</Text>
+                      {selectedMealForDetail.ingredients.map((ing, i) => (
+                        <Text key={i} style={styles.modalIngredientItem}>
+                          • {ing.name} ({ing.quantity} {ing.unit})
+                        </Text>
+                      ))}
+                    </View>
+                  )}
+
+                  {/* How to Prepare / Recipe Guide */}
+                  {selectedMealForDetail.instructions && selectedMealForDetail.instructions.length > 0 && (
+                    <View style={styles.modalRecipeBox}>
+                      <View style={styles.modalRecipeHeader}>
+                        <MaterialCommunityIcons name="chef-hat" size={15} color={COLORS.brand} />
+                        <Text style={styles.modalRecipeTitle}>How to Prepare / Recipe:</Text>
+                      </View>
+                      {selectedMealForDetail.instructions.map((step, sIdx) => (
+                        <View key={sIdx} style={styles.modalRecipeStepRow}>
+                          <View style={styles.modalRecipeStepNum}>
+                            <Text style={styles.modalRecipeStepNumText}>{sIdx + 1}</Text>
+                          </View>
+                          <Text style={styles.modalRecipeStepText}>{step}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </ScrollView>
+
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+                  <Pressable
+                    style={[styles.modalDismissBtn, { flex: 1, backgroundColor: '#F3F4F6', marginTop: 0 }]}
+                    onPress={() => setSelectedMealForDetail(null)}
+                  >
+                    <Text style={[styles.modalDismissBtnText, { color: '#374151' }]}>Close</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.modalDismissBtn, { flex: 1, backgroundColor: COLORS.brand, marginTop: 0 }]}
+                    onPress={() => {
+                      const target = selectedMealForDetail;
+                      setSelectedMealForDetail(null);
+                      openFeedbackForMeal(target);
+                    }}
+                  >
+                    <Text style={[styles.modalDismissBtnText, { color: '#FFFFFF' }]}>Give Feedback</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -1532,5 +1756,173 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     color: COLORS.danger,
+  },
+
+  // Meal Detail Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    padding: 18,
+    maxHeight: '85%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  modalMealTypeBadge: {
+    backgroundColor: COLORS.iconBgGreen,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  modalMealTypeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: COLORS.brandDark,
+  },
+  modalCloseBtn: {
+    padding: 4,
+  },
+  modalImage: {
+    width: '100%',
+    height: 140,
+    borderRadius: 14,
+    marginBottom: 12,
+  },
+  modalMealTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: COLORS.heading,
+    marginBottom: 4,
+  },
+  modalMealDesc: {
+    fontSize: 12,
+    color: COLORS.muted,
+    lineHeight: 16,
+    marginBottom: 12,
+  },
+  modalInfoPillRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  modalInfoPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#edf6e5',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  modalInfoPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.brandDark,
+  },
+  modalMacroRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: '#f8faf7',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 12,
+  },
+  modalMacroItem: {
+    alignItems: 'center',
+  },
+  modalMacroVal: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: COLORS.heading,
+  },
+  modalMacroLabel: {
+    fontSize: 9.5,
+    color: COLORS.muted,
+    marginTop: 1,
+  },
+  modalIngredientsBox: {
+    backgroundColor: '#fafbfc',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 12,
+  },
+  modalIngredientsTitle: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: COLORS.heading,
+    marginBottom: 4,
+  },
+  modalIngredientItem: {
+    fontSize: 11,
+    color: '#4b5563',
+    lineHeight: 16,
+  },
+  modalRecipeBox: {
+    backgroundColor: '#f8faf7',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#e5ece0',
+    marginBottom: 10,
+  },
+  modalRecipeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 8,
+  },
+  modalRecipeTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.heading,
+  },
+  modalRecipeStepRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 7,
+  },
+  modalRecipeStepNum: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: COLORS.brand,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  modalRecipeStepNumText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  modalRecipeStepText: {
+    flex: 1,
+    fontSize: 11,
+    color: '#374151',
+    lineHeight: 16,
+  },
+  modalDismissBtn: {
+    backgroundColor: COLORS.brandDark,
+    paddingVertical: 12,
+    borderRadius: 14,
+    alignItems: 'center',
+  },
+  modalDismissBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

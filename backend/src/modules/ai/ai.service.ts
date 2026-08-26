@@ -15,6 +15,7 @@ export type Meal = {
   name: string;
   description: string;
   ingredients: Ingredient[];
+  instructions?: string[];
   servings: number;
   calories: number;
   protein: number;
@@ -111,6 +112,30 @@ ${context.verifiedMeals
 Prefer these verified meals where suitable by setting "mealId" to the meal's ID string and matching its nutrition/ingredients. Set "mealId": null if generating a novel meal.\n`;
     }
 
+    let feedbackSection = '';
+    if (context.userFeedback) {
+      const { likedMeals, dislikedMeals, feedbackNotes } = context.userFeedback;
+      const parts: string[] = [];
+      if (likedMeals && likedMeals.length > 0) {
+        parts.push(
+          `- Highly rated / Liked dishes by user: ${likedMeals.join(', ')} (Incorporate similar flavors, textures, or recipe styles)`,
+        );
+      }
+      if (dislikedMeals && dislikedMeals.length > 0) {
+        parts.push(
+          `- Disliked / Low-rated dishes by user: ${dislikedMeals.join(', ')} (STRICTLY DO NOT propose these meals or close variations)`,
+        );
+      }
+      if (feedbackNotes && feedbackNotes.length > 0) {
+        parts.push(
+          `- Specific past user feedback & adjustments:\n  * ${feedbackNotes.slice(0, 10).join('\n  * ')}`,
+        );
+      }
+      if (parts.length > 0) {
+        feedbackSection = `\nUSER'S HISTORICAL MEAL FEEDBACK & CONTINUOUS PERSONALIZATION:\n${parts.join('\n')}\n`;
+      }
+    }
+
     const mealTypes =
       context.mealsPerDay === 4
         ? ['breakfast', 'lunch', 'snack', 'dinner']
@@ -136,15 +161,17 @@ Context: ${JSON.stringify({
       durationDays: context.durationDays,
     })}.
 ${verifiedMealsSection}
-CRITICAL REQUIREMENTS:
+${feedbackSection}
+VERY IMPORTANT REQUIREMENTS:
 1. Generate an array "days" containing EXACTLY ${context.durationDays} days numbered 1 through ${context.durationDays}.
 2. Each day MUST contain EXACTLY ${context.mealsPerDay} meals: ${mealTypes.join(', ')}.
 3. Daily sum of meal calories must be close to target (${context.dailyCalorieTarget} kcal/day).
 4. Avoid user allergies and exclusions; respect diet and budget constraints.
 5. Keep descriptions, reasons, and ingredients concise.
+6. Strictly honor user's historical feedback: never repeat disliked dishes, respect feedback notes on spice/prep-time/cost, and favor culinary profiles the user previously rated 4+ stars.
 
 Required schema:
-{"days":[{"day":1,"meals":[{"mealId":null,"mealType":"breakfast|lunch|dinner|snack","name":"string","description":"string","ingredients":[{"name":"string","quantity":100,"unit":"g"}],"servings":1,"calories":500,"protein":30,"carbs":50,"fat":15,"estimatedCostLkr":400,"prepTimeMinutes":20,"allergens":["egg"],"dietTags":["high-protein"],"reason":"string"}]}]}`;
+{"days":[{"day":1,"meals":[{"mealId":null,"mealType":"breakfast|lunch|dinner|snack","name":"string","description":"string","prepTimeMinutes":20,"instructions":["Step 1...","Step 2...","Step 3..."],"ingredients":[{"name":"string","quantity":100,"unit":"g"}],"servings":1,"calories":500,"protein":30,"carbs":50,"fat":15,"estimatedCostLkr":400,"allergens":["egg"],"dietTags":["high-protein"],"reason":"string"}]}]}`;
   }
 
   private parseAndValidate(
@@ -200,6 +227,21 @@ Required schema:
               }))
             : [{ name: 'Rice & Curry Ingredients', quantity: 1, unit: 'portion' }];
 
+        const instructions =
+          Array.isArray(rawMeal.instructions) && rawMeal.instructions.length > 0
+            ? rawMeal.instructions.map((s: any) => String(s).trim()).filter(Boolean)
+            : typeof rawMeal.recipe === 'string' && rawMeal.recipe.trim()
+              ? rawMeal.recipe
+                  .split('\n')
+                  .map((s: string) => s.replace(/^\d+[\.\)]\s*/, '').trim())
+                  .filter(Boolean)
+              : [
+                  `Rinse and prepare ingredients for ${rawMeal.name || 'this meal'}.`,
+                  `Heat pan or pot with a small amount of oil, temper spices and aromatics.`,
+                  `Combine main ingredients and simmer gently until cooked thoroughly.`,
+                  `Season to taste and serve warm with accompanying dishes.`,
+                ];
+
         meals.push({
           mealId:
             typeof rawMeal.mealId === 'string' && rawMeal.mealId.trim()
@@ -209,6 +251,7 @@ Required schema:
           name: String(rawMeal.name || 'Sri Lankan Meal'),
           description: String(rawMeal.description || rawMeal.name || 'Nutritious meal'),
           ingredients,
+          instructions,
           servings: Number(rawMeal.servings) > 0 ? Math.round(Number(rawMeal.servings)) : 1,
           calories: Math.max(0, Math.round(Number(rawMeal.calories) || 500)),
           protein: Math.max(0, Math.round(Number(rawMeal.protein) || 25)),
@@ -221,7 +264,7 @@ Required schema:
           prepTimeMinutes:
             rawMeal.prepTimeMinutes != null
               ? Math.max(1, Math.round(Number(rawMeal.prepTimeMinutes)))
-              : null,
+              : 20,
           allergens: Array.isArray(rawMeal.allergens) ? rawMeal.allergens.map(String) : [],
           dietTags: Array.isArray(rawMeal.dietTags) ? rawMeal.dietTags.map(String) : [],
           reason: String(rawMeal.reason || 'Nutritious balanced meal tailored to your goal'),

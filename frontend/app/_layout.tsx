@@ -4,6 +4,7 @@ import { StatusBar } from "expo-status-bar";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/query-client";
 import { useAuthStore } from "@/lib/auth-store";
+import { ToastBanner } from "@/components/Toast";
 import "../global.css";
 
 function AppInitializer({ children }: { children: React.ReactNode }) {
@@ -21,6 +22,7 @@ export default function RootLayout() {
     <QueryClientProvider client={queryClient}>
       <AppInitializer>
         <Stack screenOptions={{ headerShown: false }} />
+        <ToastBanner />
         <StatusBar style="dark" />
       </AppInitializer>
     </QueryClientProvider>

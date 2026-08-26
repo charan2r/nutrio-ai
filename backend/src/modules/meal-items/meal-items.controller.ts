@@ -1,34 +1,42 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Patch,
+  Param,
+  Body,
+  UseGuards,
+} from '@nestjs/common';
 import { MealItemsService } from './meal-items.service';
-import { CreateMealItemDto } from './dto/create-meal-item.dto';
-import { UpdateMealItemDto } from './dto/update-meal-item.dto';
+import { AuthGuard } from '../auth/auth.guard';
+import { CurrentUser, JwtUser } from '../user/user.decorator';
 
 @Controller('meal-items')
+@UseGuards(AuthGuard)
 export class MealItemsController {
   constructor(private readonly mealItemsService: MealItemsService) {}
 
-  @Post()
-  create(@Body() createMealItemDto: CreateMealItemDto) {
-    return this.mealItemsService.create(createMealItemDto);
+  @Patch(':id/toggle')
+  toggleStatus(@CurrentUser() user: JwtUser, @Param('id') id: string) {
+    return this.mealItemsService.toggleStatus(user.id, id);
   }
 
-  @Get()
-  findAll() {
-    return this.mealItemsService.findAll();
+  @Patch(':id/status')
+  updateStatus(
+    @CurrentUser() user: JwtUser,
+    @Param('id') id: string,
+    @Body('status') status: string,
+    @Body('consumedServings') consumedServings?: number,
+  ) {
+    return this.mealItemsService.updateStatus(
+      user.id,
+      id,
+      status,
+      consumedServings,
+    );
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.mealItemsService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateMealItemDto: UpdateMealItemDto) {
-    return this.mealItemsService.update(+id, updateMealItemDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.mealItemsService.remove(+id);
+  findOne(@CurrentUser() user: JwtUser, @Param('id') id: string) {
+    return this.mealItemsService.findOne(user.id, id);
   }
 }

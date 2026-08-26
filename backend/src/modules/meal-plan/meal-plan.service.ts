@@ -16,6 +16,8 @@ import {
   MealPlanValidationService,
 } from '../validation/meal-plan-validation.service';
 
+import { Feedback } from '../feedback/entities/feedback.entity';
+
 export type VerifiedMealSummary = {
   id: string;
   name: string;
@@ -29,6 +31,12 @@ export type VerifiedMealSummary = {
   allergens: string[];
   dietTags: string[];
   ingredients?: any[];
+};
+
+export type UserFeedbackContext = {
+  likedMeals: string[];
+  dislikedMeals: string[];
+  feedbackNotes: string[];
 };
 
 export type MealPlanGenerationContext = {
@@ -54,6 +62,7 @@ export type MealPlanGenerationContext = {
   durationDays: number;
   strictCalorieControl: boolean;
   verifiedMeals?: VerifiedMealSummary[];
+  userFeedback?: UserFeedbackContext;
 };
 
 @Injectable()
@@ -70,6 +79,8 @@ export class MealPlanService {
     private readonly mealPlanRepository: Repository<MealPlan>,
     @InjectRepository(Meal)
     private readonly mealsRepository: Repository<Meal>,
+    @InjectRepository(Feedback)
+    private readonly feedbackRepository: Repository<Feedback>,
     private readonly dataSource: DataSource,
     private readonly aiService: AiService,
     private readonly validationService: MealPlanValidationService,
@@ -146,21 +157,73 @@ export class MealPlanService {
   }
 
   async generateForUser(userId: string, dto: GenerateMealPlanDto) {
-    const [profile, preferences, allergies, verifiedMealsDb] = await Promise.all([
-      this.profiles.findOneBy({ userId }),
-      this.preferences.findOneBy({ userId }),
-      this.allergies.find({ where: { userId } }),
-      this.mealsRepository.find({
-        where: {
-          nutritionVerificationStatus: 'verified',
-          isActive: true,
-        },
-      }),
-    ]);
+    const [profile, preferences, allergies, verifiedMealsDb, userFeedbacks] =
+      await Promise.all([
+        this.profiles.findOneBy({ userId }),
+        this.preferences.findOneBy({ userId }),
+        this.allergies.find({ where: { userId } }),
+        this.mealsRepository.find({
+          where: {
+            nutritionVerificationStatus: 'verified',
+            isActive: true,
+          },
+        }),
+        this.feedbackRepository.find({
+          where: { userId },
+          order: { createdAt: 'DESC' },
+          take: 30,
+        }),
+      ]);
     if (!profile || !preferences)
       throw new NotFoundException(
         'Complete your profile and preferences before generating a meal plan',
       );
+
+    // Extract user feedback preferences
+    const likedMeals: string[] = [];
+    const dislikedMeals: string[] = [];
+    const feedbackNotes: string[] = [];
+
+    for (const fb of userFeedbacks) {
+      const name = fb.mealName?.trim();
+      if (name) {
+        if (fb.liked === true || (fb.rating !== null && Number(fb.rating) >= 4)) {
+          if (!likedMeals.includes(name)) likedMeals.push(name);
+        } else if (fb.liked === false || (fb.rating !== null && Number(fb.rating) <= 2)) {
+          if (!dislikedMeals.includes(name)) dislikedMeals.push(name);
+        }
+      }
+
+      const tags = fb.reasonTags || [];
+      if (tags.includes('spicy')) {
+        feedbackNotes.push(
+          `Tone down spice levels (User found ${name || 'past meals'} too spicy).`,
+        );
+      }
+      if (tags.includes('expensive')) {
+        feedbackNotes.push(
+          `Prioritize affordable, economical ingredients (User noted ${name || 'past meals'} was expensive).`,
+        );
+      }
+      if (tags.includes('hard_prep')) {
+        feedbackNotes.push(
+          `Favor quick & easy preparation methods (User noted ${name || 'past meals'} was hard to prepare).`,
+        );
+      }
+      if (tags.includes('unavailable')) {
+        feedbackNotes.push(
+          `Use accessible local ingredients (User noted ingredients in ${name || 'past meals'} were hard to find).`,
+        );
+      }
+      if (tags.includes('small_portion')) {
+        feedbackNotes.push(
+          `Ensure hearty portions (User noted ${name || 'past meals'} had small portion).`,
+        );
+      }
+      if (fb.comment && fb.comment.trim()) {
+        feedbackNotes.push(`User comment on ${name || 'meal'}: "${fb.comment.trim()}"`);
+      }
+    }
 
     const userAllergens = [
       ...allergies.map((a) => a.allergen),
@@ -169,7 +232,7 @@ export class MealPlanService {
 
     const userDiet = (preferences.dietType || 'non-veg').toLowerCase().trim();
 
-    // Filter verified meals shortlist matching user's diet and allergies
+    // Filter verified meals shortlist matching user's diet and allergies, excluding disliked meals
     const suitableVerifiedMeals: VerifiedMealSummary[] = verifiedMealsDb
       .filter((m) => {
         const mealAllergens = (m.allergens || []).map((a) =>
@@ -179,6 +242,14 @@ export class MealPlanService {
           mealAllergens.some((ma) => ma.includes(ua) || ua.includes(ma)),
         );
         if (hasAllergenConflict) return false;
+
+        // Check if meal was marked disliked in past feedback
+        const isDisliked = dislikedMeals.some(
+          (dm) =>
+            m.name.toLowerCase().includes(dm.toLowerCase()) ||
+            dm.toLowerCase().includes(m.name.toLowerCase()),
+        );
+        if (isDisliked) return false;
 
         if (userDiet === 'vegetarian') {
           const tags = (m.dietTags || []).map((t) => t.toLowerCase());
@@ -236,6 +307,11 @@ export class MealPlanService {
       durationDays: dto.durationDays ?? 7,
       strictCalorieControl: dto.strictCalorieControl ?? false,
       verifiedMeals: suitableVerifiedMeals,
+      userFeedback: {
+        likedMeals,
+        dislikedMeals,
+        feedbackNotes,
+      },
     };
 
     // Persist before the provider call so unsuccessful AI attempts remain traceable.

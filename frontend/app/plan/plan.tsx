@@ -19,6 +19,12 @@ import {
 } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { apiClient } from '@/lib/api-client';
+import {
+  getActivePlanDay,
+  getPlanDayDateString,
+  parseYMD,
+} from '@/lib/date-utils';
+import { showToast } from '@/lib/toast-store';
 import { NutrioFeedback } from '../feedback/feedback';
 
 const COLORS = {
@@ -49,6 +55,7 @@ type FormattedMeal = {
   prepTime: number | null;
   description: string;
   ingredients: Array<{ name: string; quantity: number; unit: string }>;
+  instructions?: string[];
   allergens: string[];
   dietTags: string[];
   reason: string;
@@ -78,6 +85,7 @@ export function NutrioPlan({
 } = {}) {
   const router = useRouter();
   const [selectedDay, setSelectedDay] = useState<number>(1);
+  const [planStartDate, setPlanStartDate] = useState<string | null>(null);
   const [qualityScore, setQualityScore] = useState<number>(90);
   const [estBudget, setEstBudget] = useState<number>(0);
   const [avgCalories, setAvgCalories] = useState<number>(2000);
@@ -155,7 +163,22 @@ export function NutrioPlan({
       const carbs = Math.round(Number(item.carbsSnapshot ?? snap.carbs ?? 60));
       const fat = Math.round(Number(item.fatSnapshot ?? snap.fat ?? 15));
       const itemCost = item.estimatedCostSnapshot ?? snap.estimatedCostLkr ?? null;
-      const prepTime = snap.prepTimeMinutes ?? null;
+      const prepTime = snap.prepTimeMinutes ? Number(snap.prepTimeMinutes) : 20;
+
+      const instructions =
+        Array.isArray(snap.instructions) && snap.instructions.length > 0
+          ? snap.instructions
+          : typeof snap.recipe === 'string' && snap.recipe.trim()
+            ? snap.recipe
+                .split('\n')
+                .map((s: string) => s.replace(/^\d+[\.\)]\s*/, '').trim())
+                .filter(Boolean)
+            : [
+                `Rinse and prepare fresh ingredients for ${snap.name || item.name || 'this dish'}.`,
+                `Heat a pot or pan with a dash of oil, temper aromatics and spices.`,
+                `Combine main ingredients and simmer gently until cooked thoroughly.`,
+                `Season with salt to taste and serve fresh with accompanying dishes.`,
+              ];
 
       let icon = 'sunny-outline';
       let iconColor = '#f59e0b';
@@ -188,6 +211,7 @@ export function NutrioPlan({
         prepTime,
         description: snap.description || snap.name || 'Balanced nutritious meal',
         ingredients: Array.isArray(snap.ingredients) ? snap.ingredients : [],
+        instructions,
         allergens: Array.isArray(snap.allergens) ? snap.allergens : [],
         dietTags: Array.isArray(snap.dietTags) ? snap.dietTags : [],
         reason: snap.reason || item.selectionExplanation?.reason || 'Nutritious balanced meal',
@@ -199,17 +223,31 @@ export function NutrioPlan({
     });
 
     let dateDuration = 0;
+    const startDateStr = rawPlan.startDate || p.startDate || null;
+    setPlanStartDate(startDateStr);
+
     if (rawPlan.startDate && rawPlan.endDate) {
-      const s = new Date(rawPlan.startDate).getTime();
-      const e = new Date(rawPlan.endDate).getTime();
-      if (!isNaN(s) && !isNaN(e) && e >= s) {
-        dateDuration = Math.round((e - s) / (1000 * 60 * 60 * 24)) + 1;
+      const s = parseYMD(rawPlan.startDate);
+      const e = parseYMD(rawPlan.endDate);
+      if (s && e) {
+        const sUtc = Date.UTC(s.year, s.month, s.date);
+        const eUtc = Date.UTC(e.year, e.month, e.date);
+        if (eUtc >= sUtc) {
+          dateDuration = Math.round((eUtc - sUtc) / (1000 * 60 * 60 * 24)) + 1;
+        }
       }
     }
 
     const dayCount = Math.max(maxDayFromItems, dateDuration, 1);
     setTotalDays(dayCount);
     setMealsByDay(grouped);
+
+    const currentActiveDay = getActivePlanDay(startDateStr, dayCount);
+    if (currentActiveDay) {
+      setSelectedDay(currentActiveDay);
+    } else {
+      setSelectedDay(1);
+    }
 
     const totalCals = rawPlan.totalCalories ?? p.totalCalories;
     if (totalCals) {
@@ -234,8 +272,9 @@ export function NutrioPlan({
       await Share.share({
         message: `Check out my ${totalDays}-day personalized meal plan (Quality Score: ${qualityScore}/100) from Nutrio AI! 🌱`,
       });
+      showToast('Meal plan shared successfully!', 'success');
     } catch {
-      Alert.alert('Share Plan', 'Meal plan link copied to clipboard.');
+      showToast('Meal plan link copied to clipboard.', 'info');
     }
   };
 
@@ -457,15 +496,32 @@ export function NutrioPlan({
           >
             {dayNumbers.map((d) => {
               const isActive = selectedDay === d;
+              const isToday = planStartDate && getActivePlanDay(planStartDate, totalDays) === d;
+              const dateStr = getPlanDayDateString(planStartDate, d);
               return (
                 <Pressable
                   key={d}
-                  style={[styles.dayTabPill, isActive && styles.dayTabPillActive]}
+                  style={[
+                    styles.dayTabPill,
+                    isActive && styles.dayTabPillActive,
+                    isToday && !isActive && { borderColor: COLORS.brand, backgroundColor: '#f0f9ed' },
+                  ]}
                   onPress={() => setSelectedDay(d)}
                 >
-                  <Text style={[styles.dayTabText, isActive && styles.dayTabTextActive]}>
+                  <Text style={[styles.dayTabText, isActive && styles.dayTabTextActive, isToday && !isActive && { color: COLORS.brandDark }]}>
                     Day {d}
                   </Text>
+                  {dateStr ? (
+                    <Text
+                      style={[
+                        { fontSize: 10, fontWeight: '600', color: COLORS.muted, marginTop: 1, textAlign: 'center' },
+                        isActive && { color: '#e2f4dc' },
+                        isToday && !isActive && { color: COLORS.brand },
+                      ]}
+                    >
+                      {dateStr} {isToday ? '• Today' : ''}
+                    </Text>
+                  ) : null}
                 </Pressable>
               );
             })}
@@ -474,15 +530,24 @@ export function NutrioPlan({
           {/* Selected Day Meals Section */}
           <View style={styles.daySection}>
             <View style={styles.daySectionHeader}>
-              <Text style={styles.daySectionTitle}>
-                Day {selectedDay}{' '}
-                <Text style={styles.daySectionKcal}>
-                  • {currentDayCalories ? `${currentDayCalories.toLocaleString()} kcal` : ''}
+              <View>
+                <Text style={styles.daySectionTitle}>
+                  Day {selectedDay}{' '}
+                  {getPlanDayDateString(planStartDate, selectedDay) ? (
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.label }}>
+                      ({getPlanDayDateString(planStartDate, selectedDay)}) {planStartDate && getActivePlanDay(planStartDate, totalDays) === selectedDay ? '• Today' : ''}
+                    </Text>
+                  ) : null}
                 </Text>
-              </Text>
+                <Text style={{ fontSize: 11.5, color: COLORS.muted, fontWeight: '600', marginTop: 1 }}>
+                  {currentDayCalories ? `${currentDayCalories.toLocaleString()} kcal scheduled` : ''}
+                </Text>
+              </View>
               <View style={styles.goalsMetBadge}>
                 <Ionicons name="checkmark-circle" size={13} color="#22c55e" />
-                <Text style={styles.goalsMetText}>Ready</Text>
+                <Text style={styles.goalsMetText}>
+                  {planStartDate && getActivePlanDay(planStartDate, totalDays) === selectedDay ? 'Active Today' : 'Ready'}
+                </Text>
               </View>
             </View>
 
@@ -522,22 +587,34 @@ export function NutrioPlan({
               {dayNumbers.map((dNum) => {
                 const dMeals = mealsByDay[dNum] || [];
                 const dCals = dMeals.reduce((acc, m) => acc + m.caloriesNum, 0);
+                const dateStr = getPlanDayDateString(planStartDate, dNum);
+                const isToday = planStartDate && getActivePlanDay(planStartDate, totalDays) === dNum;
                 return (
                   <Pressable
                     key={dNum}
                     style={[
                       styles.dayRowCard,
                       selectedDay === dNum && styles.dayRowCardActive,
+                      isToday && { borderColor: COLORS.brand },
                     ]}
                     onPress={() => setSelectedDay(dNum)}
                   >
                     <View style={styles.dayRowLeft}>
-                      <View style={styles.dayRowNumberBadge}>
-                        <Text style={styles.dayRowNumberText}>D{dNum}</Text>
+                      <View style={[styles.dayRowNumberBadge, isToday && { backgroundColor: COLORS.iconBgGreen }]}>
+                        <Text style={[styles.dayRowNumberText, isToday && { color: COLORS.brandDark }]}>D{dNum}</Text>
                       </View>
-                      <View>
-                        <Text style={styles.dayRowTitle}>Day {dNum}</Text>
-                        <Text style={styles.dayRowSubtitle}>
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={styles.dayRowTitle}>
+                            Day {dNum} {dateStr ? `(${dateStr})` : ''}
+                          </Text>
+                          {isToday && (
+                            <View style={{ backgroundColor: '#e2f4dc', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 }}>
+                              <Text style={{ fontSize: 9.5, color: COLORS.brandDark, fontWeight: '800' }}>TODAY</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={styles.dayRowSubtitle} numberOfLines={1}>
                           {dMeals.map((m) => m.name).join(' • ') || 'Scheduled meals'}
                         </Text>
                       </View>
@@ -591,46 +668,82 @@ export function NutrioPlan({
                   </Pressable>
                 </View>
 
-                <Image
-                  source={selectedMealDetail.image}
-                  style={styles.modalImage}
-                  resizeMode="cover"
-                />
+                <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 460 }}>
+                  <Image
+                    source={selectedMealDetail.image}
+                    style={styles.modalImage}
+                    resizeMode="cover"
+                  />
 
-                <Text style={styles.modalMealTitle}>{selectedMealDetail.name}</Text>
-                <Text style={styles.modalMealDesc}>{selectedMealDetail.description}</Text>
+                  <Text style={styles.modalMealTitle}>{selectedMealDetail.name}</Text>
+                  <Text style={styles.modalMealDesc}>{selectedMealDetail.description}</Text>
 
-                {/* Macro Strip */}
-                <View style={styles.modalMacroRow}>
-                  <View style={styles.modalMacroItem}>
-                    <Text style={styles.modalMacroVal}>{selectedMealDetail.calories}</Text>
-                    <Text style={styles.modalMacroLabel}>Calories</Text>
-                  </View>
-                  <View style={styles.modalMacroItem}>
-                    <Text style={styles.modalMacroVal}>{selectedMealDetail.protein}g</Text>
-                    <Text style={styles.modalMacroLabel}>Protein</Text>
-                  </View>
-                  <View style={styles.modalMacroItem}>
-                    <Text style={styles.modalMacroVal}>{selectedMealDetail.carbs}g</Text>
-                    <Text style={styles.modalMacroLabel}>Carbs</Text>
-                  </View>
-                  <View style={styles.modalMacroItem}>
-                    <Text style={styles.modalMacroVal}>{selectedMealDetail.fat}g</Text>
-                    <Text style={styles.modalMacroLabel}>Fats</Text>
-                  </View>
-                </View>
-
-                {/* Ingredients List */}
-                {selectedMealDetail.ingredients.length > 0 && (
-                  <View style={styles.modalIngredientsBox}>
-                    <Text style={styles.modalIngredientsTitle}>Ingredients:</Text>
-                    {selectedMealDetail.ingredients.map((ing, i) => (
-                      <Text key={i} style={styles.modalIngredientItem}>
-                        • {ing.name} ({ing.quantity} {ing.unit})
+                  {/* Prep Time & Cost Row */}
+                  <View style={styles.modalInfoPillRow}>
+                    <View style={styles.modalInfoPill}>
+                      <Ionicons name="time-outline" size={13} color={COLORS.brand} />
+                      <Text style={styles.modalInfoPillText}>
+                        Prep: {selectedMealDetail.prepTime ? `${selectedMealDetail.prepTime} mins` : '20 mins'}
                       </Text>
-                    ))}
+                    </View>
+                    {selectedMealDetail.cost && (
+                      <View style={styles.modalInfoPill}>
+                        <MaterialCommunityIcons name="wallet-outline" size={13} color={COLORS.brand} />
+                        <Text style={styles.modalInfoPillText}>LKR {selectedMealDetail.cost}</Text>
+                      </View>
+                    )}
                   </View>
-                )}
+
+                  {/* Macro Strip */}
+                  <View style={styles.modalMacroRow}>
+                    <View style={styles.modalMacroItem}>
+                      <Text style={styles.modalMacroVal}>{selectedMealDetail.calories}</Text>
+                      <Text style={styles.modalMacroLabel}>Calories</Text>
+                    </View>
+                    <View style={styles.modalMacroItem}>
+                      <Text style={styles.modalMacroVal}>{selectedMealDetail.protein}g</Text>
+                      <Text style={styles.modalMacroLabel}>Protein</Text>
+                    </View>
+                    <View style={styles.modalMacroItem}>
+                      <Text style={styles.modalMacroVal}>{selectedMealDetail.carbs}g</Text>
+                      <Text style={styles.modalMacroLabel}>Carbs</Text>
+                    </View>
+                    <View style={styles.modalMacroItem}>
+                      <Text style={styles.modalMacroVal}>{selectedMealDetail.fat}g</Text>
+                      <Text style={styles.modalMacroLabel}>Fats</Text>
+                    </View>
+                  </View>
+
+                  {/* Ingredients List */}
+                  {selectedMealDetail.ingredients.length > 0 && (
+                    <View style={styles.modalIngredientsBox}>
+                      <Text style={styles.modalIngredientsTitle}>Ingredients:</Text>
+                      {selectedMealDetail.ingredients.map((ing, i) => (
+                        <Text key={i} style={styles.modalIngredientItem}>
+                          • {ing.name} ({ing.quantity} {ing.unit})
+                        </Text>
+                      ))}
+                    </View>
+                  )}
+
+                  {/* How to Prepare / Recipe Guide */}
+                  {selectedMealDetail.instructions && selectedMealDetail.instructions.length > 0 && (
+                    <View style={styles.modalRecipeBox}>
+                      <View style={styles.modalRecipeHeader}>
+                        <MaterialCommunityIcons name="chef-hat" size={15} color={COLORS.brand} />
+                        <Text style={styles.modalRecipeTitle}>How to Prepare / Recipe:</Text>
+                      </View>
+                      {selectedMealDetail.instructions.map((step, sIdx) => (
+                        <View key={sIdx} style={styles.modalRecipeStepRow}>
+                          <View style={styles.modalRecipeStepNum}>
+                            <Text style={styles.modalRecipeStepNumText}>{sIdx + 1}</Text>
+                          </View>
+                          <Text style={styles.modalRecipeStepText}>{step}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </ScrollView>
 
                 <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
                   <Pressable
@@ -1271,6 +1384,70 @@ const styles = StyleSheet.create({
   modalIngredientItem: {
     fontSize: 11,
     color: '#4b5563',
+    lineHeight: 16,
+  },
+  modalInfoPillRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  modalInfoPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#edf6e5',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  modalInfoPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.brandDark,
+  },
+  modalRecipeBox: {
+    backgroundColor: '#f8faf7',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#e5ece0',
+    marginBottom: 10,
+  },
+  modalRecipeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 8,
+  },
+  modalRecipeTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.heading,
+  },
+  modalRecipeStepRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 7,
+  },
+  modalRecipeStepNum: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: COLORS.brand,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  modalRecipeStepNumText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  modalRecipeStepText: {
+    flex: 1,
+    fontSize: 11,
+    color: '#374151',
     lineHeight: 16,
   },
   modalDismissBtn: {
