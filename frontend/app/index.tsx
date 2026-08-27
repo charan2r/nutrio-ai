@@ -1,12 +1,14 @@
-import React from "react";
+import React, { useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { useAuthStore } from "@/lib/auth-store";
+import { NutrioSplash } from "./splash/splash";
 import { NutrioLogin } from "./login/nutrio-login";
 import { NutrioPersonalization } from "./personalization/personalization";
 import { NutrioHome } from "./home/home";
 
 export default function HomeScreen() {
   const { isAuthenticated, isOnboarded, isLoading } = useAuthStore();
+  const [showLogin, setShowLogin] = useState<boolean>(false);
 
   if (isLoading) {
     return (
@@ -17,7 +19,15 @@ export default function HomeScreen() {
   }
 
   if (!isAuthenticated) {
-    return <NutrioLogin />;
+    if (!showLogin) {
+      return (
+        <NutrioSplash
+          onGetStarted={() => setShowLogin(true)}
+          onSignIn={() => setShowLogin(true)}
+        />
+      );
+    }
+    return <NutrioLogin onBackToSplash={() => setShowLogin(false)} />;
   }
 
   if (!isOnboarded) {

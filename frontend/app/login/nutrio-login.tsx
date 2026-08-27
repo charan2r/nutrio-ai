@@ -15,7 +15,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuthStore } from '@/lib/auth-store';
 
-export function NutrioLogin() {
+export function NutrioLogin({
+  onBackToSplash,
+}: {
+  onBackToSplash?: () => void;
+} = {}) {
   const [activeTab, setActiveTab] = useState<'signin' | 'create'>('signin');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -122,6 +126,25 @@ export function NutrioLogin() {
           {/* Combined Hero Section */}
           <View style={styles.heroContainer}>
             <View style={styles.heroLeft}>
+              {onBackToSplash && (
+                <Pressable
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    backgroundColor: '#FFFFFF',
+                    borderWidth: 1,
+                    borderColor: '#e2ece0',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginBottom: 10,
+                  }}
+                  onPress={onBackToSplash}
+                  hitSlop={8}
+                >
+                  <Ionicons name="arrow-back" size={18} color="#18202a" />
+                </Pressable>
+              )}
               {/* 1. Nutrio AI Brand */}
               <View style={styles.brandRow}>
                 <View style={styles.brandLogoContainer}>
