@@ -5,10 +5,20 @@ import { UserPreferencesService } from './user-preferences.service';
 describe('UserPreferencesController', () => {
   let controller: UserPreferencesController;
 
+  const mockPrefService = {
+    findForUser: jest.fn().mockResolvedValue({ id: 'pref-1' }),
+    upsertForUser: jest.fn().mockResolvedValue({ id: 'pref-1' }),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [UserPreferencesController],
-      providers: [UserPreferencesService],
+      providers: [
+        {
+          provide: UserPreferencesService,
+          useValue: mockPrefService,
+        },
+      ],
     }).compile();
 
     controller = module.get<UserPreferencesController>(UserPreferencesController);

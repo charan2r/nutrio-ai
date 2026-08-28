@@ -1,45 +1,55 @@
 # 🥗 Nutrio AI — Intelligent Personalized Nutrition & Meal Planning Platform
 
-Nutrio AI is an AI-powered personalized nutrition and meal-planning mobile application designed to provide culturally adaptive, nutritionally verified, and budget-friendly meal plans. Specializing in Sri Lankan culinary profiles, Nutrio AI crafts comprehensive multi-day diet plans, automates consolidated grocery lists, validates ingredient safety against allergies, and continuously learns user preferences through feedback.
+Nutrio AI is a full-stack, AI-powered personalized nutrition and meal-planning mobile application designed to provide culturally adaptive, nutritionally verified, and budget-friendly diet plans. Tailored especially for including Sri Lankan cuisine, Nutrio AI creates structured multi-day meal plans, provides AI-driven meal replacement alternatives, automates categorized grocery lists, enforces allergy and dietary safety constraints, and continuously learns user preferences through feedback.
 
 ---
 
-## 🌟 Core Features
+## 🌟 Key Features
 
-### 1. 🤖 AI-Powered Adaptive Meal Generation
+### 1. 🚀 Splash & Onboarding Flow
 
-- Generates multi-day structured meal plans using **Google Gemini 2.5/3.5 Flash** models.
-- Adapts to user goals: **Weight Loss**, **Muscle Gain**, **Maintenance**, or **General Wellness**.
-- Contextualizes recipes with authentic regional ingredients (e.g., Red Rice, Dhal, Pol Sambol, String Hoppers, Fish Ambul Thiyal).
+- **Branded Splash Entry**: High-fidelity landing screen with visual branding, feature badges (_Goal-based plans_, _Budget friendly_, _Made for you_), and smooth navigation into Authentication.
+- **Guided Personalization Onboarding**: Multi-step intake wizard capturing physical attributes (Age/DOB, Biological Sex, Height, Weight, Activity Level, Fitness Goals) and dietary preferences (Diet Type, Cuisines, Excluded Ingredients, Disliked Foods, Allergens, Daily Budget in LKR, Meals per Day).
 
-### 2. 🛡️ Multi-Layer Constraint & Safety Validation Engine
+### 2. 🤖 AI-Powered Adaptive Meal Plan Generation
 
-- **Allergy & Intolerance Guard**: Inspects every meal against strict allergen profiles (e.g., Peanuts, Dairy, Shellfish, Gluten, Soy).
-- **Macro & Calorie Balancing**: Calculates BMR/TDEE targets from age, gender, height, weight, and activity level.
-- **Budget Compliance**: Tracks daily budget in LKR to keep plans economical.
-- **Diversity & Prep Time Checks**: Prevents repetitive meals and honors maximum cooking time preferences.
+- Generates structured multi-day diet plans using **Google Gemini 3.5 Flash** models with structured JSON schemas.
+- Contextualizes recipes with regional and whole-food ingredients (e.g., Red Rice, Dhal Curry, Pol Roti, String Hoppers, Fish Ambul Thiyal, Grilled Chicken, Steamed Greens).
+- Automatically calculates BMR / TDEE calorie and macro targets (Protein, Carbs, Fat) tailored to weight loss, muscle gain, or maintenance.
 
-### 3. 📊 Daily Tracking Dashboard
+### 3. 🔄 Dynamic AI Meal Replacement System
 
-- Dynamic circular progress rings and macro breakdown bars (Calories, Protein, Carbs, Fats).
-- Interactive meal check-offs to mark breakfasts, lunches, and dinners completed.
-- Daily budget utilization tracking.
+- **Real-Time AI Alternatives (`GET /api/meal-items/:id/alternatives`)**: Generates 3 personalized replacement dishes using Gemini AI, strictly honoring the user's calorie budget, allergies, and historical feedback.
+- **Database-Linked Swapping (`POST /api/meal-items/:id/replace`)**: Archives the previous item (`status = 'replaced'`), records the replacement with `replacesMealItemId`, and automatically recalculates parent meal plan calories, macros, and estimated cost totals.
+- **Dedicated Replacement Screen (`replace.tsx`)**: Displays the current meal with "Why replace?" insights, tag pills (_High Protein_, _Gluten Free_, _Vegetarian_), and 1-tap instant dashboard synchronization.
 
-### 4. 🛒 Automated Consolidated Grocery List
+### 4. 📊 Interactive Dashboard & Meal Details Modal
 
-- Aggregates ingredients across all scheduled meals in the active plan.
-- Categorizes items into **Fresh Produce**, **Grains & Bakery**, **Proteins & Meat**, **Spices & Condiments**, and **Dairy**.
-- Interactive checkbox list to track in-store shopping with estimated pricing.
+- Dynamic circular calorie gauge and real-time remaining macro trackers.
+- Meal cards for Breakfast, Lunch, Dinner, and Snacks with completion toggle checkmarks.
+- **Recipe & Meal Details Modal**: Complete ingredient lists with quantities, preparation times, step-by-step cooking instructions, and direct triggers for **Replace Meal** and **Give Feedback**.
 
-### 5. 💬 Continuous Personalization & Feedback Loop
+### 5. 📜 Plan History & Management (`history.tsx`)
 
-- Rate meals with thumbs up/down, 1–5 star ratings, reason tags (_Too spicy_, _Expensive_, _Hard to prepare_, _Unavailable ingredients_), and custom reviews.
-- Persists feedback to refine future AI meal generations.
+- View and search past and active meal plans (`GET /api/meal-plans`).
+- Filter by **All Plans**, **Active**, **Completed**, and **Saved**.
+- Quality Score ratings (0–100%), calorie and cost summaries, and 1-tap plan view.
 
-### 6. 🎨 Modern Mobile Interface
+### 6. 🛒 Smart Categorized Grocery List (`grocery.tsx`)
 
-- Built with **React Native (Expo)**, **NativeWind**, and custom glassmorphism / soft-green pastel palettes.
-- Smooth transitions, bottom sheet drawers, and optimized gesture handling.
+- Aggregates ingredients across all scheduled meals in the active plan (`GET /api/grocery-list/plan/:id`).
+- Intelligently categorizes items into 5 nutritional groups:
+  1. **Carbohydrates** 🍚 (Rice, Bread, Roti, Flour, Oats, Noodles, Pittu, Potatoes, etc.)
+  2. **Proteins** 🍗 (Chicken, Fish, Eggs, Tofu, Dhal, Lentils, Chickpeas, Dairy, etc.)
+  3. **Vegetables** 🥬 (Greens, Carrots, Cabbage, Leeks, Tomatoes, Gotukola, Capsicum, etc.)
+  4. **Fruits** 🍎 (Bananas, Papaya, Mangoes, Apples, Avocados, Lime, etc.)
+  5. **Other** 🧂 (Cooking Oils, Spices, Seasonings, Sugar, Goraka, Condiments)
+- Filter by _All Items_, _To Buy_, and _Purchased_, with interactive item checkboxes and "Mark All as Purchased".
+
+### 7. 💬 Continuous Personalization & Feedback Loop
+
+- Rate meals with Thumbs Up/Down, 1–5 Star ratings, custom reviews, and reason tags (_Too spicy_, _Too expensive_, _Hard to prepare_, _Unavailable ingredients_, _Portion too small/large_).
+- Feedback history is stored and passed into subsequent AI generation prompts to eliminate disliked meals and reinforce favorite recipes.
 
 ---
 
@@ -48,52 +58,72 @@ Nutrio AI is an AI-powered personalized nutrition and meal-planning mobile appli
 ```mermaid
 graph TD
     subgraph Client ["Frontend (React Native / Expo)"]
-        UI["Mobile App UI"]
-        Zustand["Auth Store (Zustand)"]
-        AxiosClient["API Client (Axios + JWT)"]
-        UI --> Zustand
-        UI --> AxiosClient
+        Splash["Splash Screen (app/splash)"]
+        AuthUI["Login & Register (app/login)"]
+        Onboarding["Personalization Wizard (app/personalization)"]
+        Home["Home Dashboard (app/home)"]
+        PlanUI["Plan Detail & Generate (app/plan, app/generate)"]
+        ReplaceUI["Replace Meal Screen (app/replace)"]
+        HistoryUI["Plan History (app/history)"]
+        GroceryUI["Grocery List (app/grocery)"]
+        FeedbackUI["Meal Feedback (app/feedback)"]
+        Zustand["Auth Store (Zustand + SecureStore)"]
+        Axios["API Client (Axios + JWT Interceptors)"]
+
+        Splash --> AuthUI
+        AuthUI --> Onboarding
+        AuthUI --> Home
+        Home --> PlanUI
+        Home --> ReplaceUI
+        Home --> HistoryUI
+        Home --> GroceryUI
+        Home --> FeedbackUI
+        Home --> Zustand
+        Home --> Axios
     end
 
     subgraph Server ["Backend (NestJS Framework)"]
-        Gateway["Global Prefix /api + ValidationPipe"]
-        AuthG["Passport JWT AuthGuard"]
+        Gateway["Global Prefix /api + ValidationPipe + JWT AuthGuard"]
 
         subgraph Modules ["NestJS Core Modules"]
             AuthM["AuthModule"]
-            ProfileM["Profile & Preferences"]
+            ProfileM["ProfileModule"]
+            PrefM["UserPreferencesModule"]
+            AllergyM["AllergyModule"]
             PlanM["MealPlanModule"]
-            AiM["AiModule (Gemini Client)"]
+            ItemsM["MealItemsModule"]
+            AiM["AiModule (Google Gemini Service)"]
             ValM["ValidationModule"]
             GrocM["GroceryListModule"]
             FeedM["FeedbackModule"]
         end
 
-        Gateway --> AuthG
-        AuthG --> Modules
+        Gateway --> Modules
         PlanM --> AiM
         PlanM --> ValM
         PlanM --> GrocM
+        ItemsM --> AiM
+        ItemsM --> PlanM
     end
 
-    subgraph External ["External Services"]
-        Gemini["Google Gemini AI API"]
+    subgraph External ["External AI Services"]
+        Gemini["Google Gemini API (REST / JSON Mode)"]
     end
 
-    subgraph Database ["Data Tier (PostgreSQL + TypeORM)"]
+    subgraph Database ["Database Tier (PostgreSQL + TypeORM)"]
         Users[("users")]
         Profiles[("user_profiles")]
         Prefs[("user_preferences")]
         Allergies[("allergies")]
         Plans[("meal_plans")]
-        Items[("meal_items")]
-        Meals[("meals (Trusted DB)")]
+        Items[("meal_items (with replacesMealItemId)")]
+        Meals[("meals (Verified Database)")]
         Grocery[("grocery_lists")]
         Feedback[("feedback")]
     end
 
-    AxiosClient -->|HTTPS / JSON| Gateway
-    AiM -->|Prompt / JSON Schema| Gemini
+    Axios -->|HTTPS / REST API| Gateway
+    AiM -->|Prompts + Context| Gemini
     Modules -->|TypeORM Repositories| Database
 ```
 
@@ -103,73 +133,84 @@ graph TD
 
 ### Backend
 
-- **Framework**: NestJS
+- **Framework**: NestJS (Node.js)
 - **Language**: TypeScript
 - **Database & ORM**: PostgreSQL with TypeORM
 - **Authentication**: Passport.js with JWT Strategy & `bcrypt` password hashing
 - **Validation**: `class-validator` and `class-transformer`
-- **AI Integration**: Google Gemini API via REST (`generateContent` with JSON mode)
+- **AI Integration**: Google Gemini API (`@nestjs/config`, `fetch` with structured JSON responses)
 
 ### Frontend
 
-- **Framework**: React Native with Expo
+- **Framework**: React Native with Expo (SDK 54)
 - **Routing**: Expo Router (File-based navigation)
-- **Styling**: NativeWind (TailwindCSS v3 for React Native) & Custom StyleSheet
+- **Styling**: Vanilla React Native StyleSheet + NativeWind (TailwindCSS)
 - **State Management**: Zustand
 - **Networking**: Axios with automatic JWT interceptors
-- **Icons**: @expo/vector-icons (Ionicons, Feather, MaterialCommunityIcons)
+- **Icons**: `@expo/vector-icons` (Ionicons, Feather, MaterialCommunityIcons)
+- **Storage**: `expo-secure-store`
 
 ---
 
 ## 🔌 API Reference
 
-All backend endpoints are prefixed with `/api`. Protected routes require a Bearer token in the `Authorization` header.
+All backend endpoints are prefixed with `/api`. Protected routes require a Bearer token in the `Authorization` header (`Authorization: Bearer <JWT_TOKEN>`).
 
 ### 🔐 Authentication (`/api/auth`)
 
-| Method | Endpoint             | Description                                              | Auth |
-| :----- | :------------------- | :------------------------------------------------------- | :--: |
-| `POST` | `/api/auth/register` | Register new user account with email, name, and password |  No  |
-| `POST` | `/api/auth/login`    | Authenticate user and receive JWT access token           |  No  |
-| `GET`  | `/api/auth/me`       | Fetch authenticated user profile & onboarding status     | Yes  |
+| Method | Endpoint             | Description                                            | Auth |
+| :----- | :------------------- | :----------------------------------------------------- | :--: |
+| `POST` | `/api/auth/register` | Register a new user account                            |  No  |
+| `POST` | `/api/auth/login`    | Authenticate user and return JWT access token          |  No  |
+| `GET`  | `/api/auth/me`       | Fetch authenticated user details and onboarding status | Yes  |
 
-### 👤 Profile & Personalization (`/api/profile`, `/api/preferences`, `/api/allergies`)
+### 👤 Profile & Preferences (`/api/profile`, `/api/preferences`, `/api/allergies`)
 
-| Method   | Endpoint             | Description                                                    | Auth |
-| :------- | :------------------- | :------------------------------------------------------------- | :--: |
-| `GET`    | `/api/profile`       | Retrieve physical attributes, DOB, and goal settings           | Yes  |
-| `PUT`    | `/api/profile`       | Create or update physical profile (triggers BMR recalculation) | Yes  |
-| `GET`    | `/api/preferences`   | Retrieve dietary preferences, cuisines, and budget             | Yes  |
-| `PUT`    | `/api/preferences`   | Update meal frequency, excluded ingredients, diet style        | Yes  |
-| `GET`    | `/api/allergies`     | List user registered allergens                                 | Yes  |
-| `POST`   | `/api/allergies`     | Add new allergen                                               | Yes  |
-| `DELETE` | `/api/allergies/:id` | Remove allergen                                                | Yes  |
+| Method   | Endpoint             | Description                                                        | Auth |
+| :------- | :------------------- | :----------------------------------------------------------------- | :--: |
+| `GET`    | `/api/profile`       | Retrieve physical attributes, DOB, and fitness goal                | Yes  |
+| `PUT`    | `/api/profile`       | Create/update profile (triggers BMR & calorie target calculations) | Yes  |
+| `GET`    | `/api/preferences`   | Retrieve dietary preferences, cuisines, and budget                 | Yes  |
+| `PUT`    | `/api/preferences`   | Update meal frequency, excluded ingredients, daily budget          | Yes  |
+| `GET`    | `/api/allergies`     | List user registered allergens                                     | Yes  |
+| `POST`   | `/api/allergies`     | Add new allergen                                                   | Yes  |
+| `DELETE` | `/api/allergies/:id` | Remove registered allergen                                         | Yes  |
 
-### 🍽️ Meal Plans & AI Generation (`/api/meal-plans`)
+### 🍽️ Meal Plans (`/api/meal-plans`)
 
-| Method  | Endpoint                     | Description                                             | Auth |
-| :------ | :--------------------------- | :------------------------------------------------------ | :--: |
-| `POST`  | `/api/meal-plans/generate`   | Generate AI meal plan (Gemini API + Validation)         | Yes  |
-| `GET`   | `/api/meal-plans`            | List user's historical and active meal plans            | Yes  |
-| `GET`   | `/api/meal-plans/latest`     | Fetch the currently active meal plan                    | Yes  |
-| `GET`   | `/api/meal-plans/:id`        | Fetch full meal plan detail with items and grocery list | Yes  |
-| `PATCH` | `/api/meal-plans/:id/status` | Update plan status (`active`, `completed`, `archived`)  | Yes  |
+| Method  | Endpoint                     | Description                                                     | Auth |
+| :------ | :--------------------------- | :-------------------------------------------------------------- | :--: |
+| `POST`  | `/api/meal-plans/generate`   | Generate full multi-day AI meal plan (Gemini + Validation)      | Yes  |
+| `GET`   | `/api/meal-plans`            | List user's historical and active meal plans                    | Yes  |
+| `GET`   | `/api/meal-plans/latest`     | Fetch the currently active meal plan                            | Yes  |
+| `GET`   | `/api/meal-plans/:id`        | Fetch full meal plan details with active items and grocery list | Yes  |
+| `PATCH` | `/api/meal-plans/:id/status` | Update plan status (`active`, `completed`, `archived`)          | Yes  |
 
-### 🛒 Grocery Lists (`/api/grocery-lists`)
+### 🍲 Meal Items & AI Replacement (`/api/meal-items`)
 
-| Method  | Endpoint                                  | Description                                     | Auth |
-| :------ | :---------------------------------------- | :---------------------------------------------- | :--: |
-| `GET`   | `/api/grocery-lists/:planId`              | Fetch consolidated grocery list for a meal plan | Yes  |
-| `PATCH` | `/api/grocery-lists/:planId/items/:index` | Toggle purchased status of a grocery item       | Yes  |
+| Method  | Endpoint                           | Description                                                                                      | Auth |
+| :------ | :--------------------------------- | :----------------------------------------------------------------------------------------------- | :--: |
+| `GET`   | `/api/meal-items/:id/alternatives` | Generate 3 tailored AI replacement meals based on user profile, budget, and feedback             | Yes  |
+| `POST`  | `/api/meal-items/:id/replace`      | Archive original item, create replacement with `replacesMealItemId`, and recalculate plan totals | Yes  |
+| `PATCH` | `/api/meal-items/:id/toggle`       | Toggle meal status between `completed` and `scheduled`                                           | Yes  |
+| `PATCH` | `/api/meal-items/:id/status`       | Update specific item status and consumed servings                                                | Yes  |
+| `GET`   | `/api/meal-items/:id`              | Fetch single meal item detail with relations                                                     | Yes  |
 
-### ⭐ Feedback & Ratings (`/api/feedback`)
+### 🛒 Grocery Lists (`/api/grocery-list`)
 
-| Method   | Endpoint            | Description                                                 | Auth |
-| :------- | :------------------ | :---------------------------------------------------------- | :--: |
-| `POST`   | `/api/feedback`     | Submit meal rating, likes/dislikes, reason tags, and review | Yes  |
-| `GET`    | `/api/feedback`     | List user submitted feedback history                        | Yes  |
-| `GET`    | `/api/feedback/:id` | Fetch specific feedback record                              | Yes  |
-| `DELETE` | `/api/feedback/:id` | Delete feedback record                                      | Yes  |
+| Method  | Endpoint                                      | Description                                    | Auth |
+| :------ | :-------------------------------------------- | :--------------------------------------------- | :--: |
+| `GET`   | `/api/grocery-list/plan/:planId`              | Fetch categorized grocery list for a meal plan | Yes  |
+| `PATCH` | `/api/grocery-list/plan/:planId/items/:index` | Toggle purchased status of a grocery item      | Yes  |
+
+### ⭐ Feedback & Reviews (`/api/feedback`)
+
+| Method   | Endpoint            | Description                                                      | Auth |
+| :------- | :------------------ | :--------------------------------------------------------------- | :--: |
+| `POST`   | `/api/feedback`     | Submit meal rating, thumbs up/down, reason tags, and review text | Yes  |
+| `GET`    | `/api/feedback`     | List user submitted feedback history                             | Yes  |
+| `GET`    | `/api/feedback/:id` | Fetch specific feedback record                                   | Yes  |
+| `DELETE` | `/api/feedback/:id` | Delete feedback record                                           | Yes  |
 
 ---
 
@@ -179,15 +220,15 @@ All backend endpoints are prefixed with `/api`. Protected routes require a Beare
 
 - **Node.js**: `v18.x` or `v20.x`
 - **npm**
-- **PostgreSQL Database** (Local or cloud hosted e.g. Neon, Supabase, AWS RDS)
+- **PostgreSQL Database** (Local instance or Cloud e.g., Supabase, Neon, AWS RDS)
 - **Google Gemini API Key** (from [Google AI Studio](https://aistudio.google.com/))
-- **Expo Go App** (on your physical iOS/Android device) or an Emulator
+- **Expo Go App** on mobile or an iOS/Android Simulator
 
 ---
 
 ### 1. Backend Setup
 
-1. **Navigate to backend directory**:
+1. **Navigate to the backend directory**:
 
    ```bash
    cd backend
@@ -202,27 +243,21 @@ All backend endpoints are prefixed with `/api`. Protected routes require a Beare
    DATABASE_URL=postgresql://<username>:<password>@<host>:<port>/<database>?sslmode=require
    JWT_SECRET=your-super-secret-jwt-key
    GEMINI_API_KEY=your-google-gemini-api-key
-   GEMINI_MODEL=gemini-2.5-flash
+   GEMINI_MODEL=gemini-3.5-flash
    ```
 
-3. **Run Migrations**:
-
-   ```bash
-   npm run migration:run
-   ```
-
-4. **Start Backend Server**:
+3. **Start the Backend Server**:
    ```bash
    # Development mode with hot-reload
    npm run start:dev
    ```
-   _The server will start at `http://localhost:3000/api`._
+   _The backend will be available at `http://localhost:3000/api`._
 
 ---
 
 ### 2. Frontend Setup
 
-1. **Navigate to frontend directory**:
+1. **Navigate to the frontend directory**:
 
    ```bash
    cd frontend
@@ -236,32 +271,45 @@ All backend endpoints are prefixed with `/api`. Protected routes require a Beare
    EXPO_PUBLIC_API_URL=http://<YOUR_LOCAL_IP>:3000/api
    ```
 
-   _(Replace `<YOUR_LOCAL_IP>` with your computer's local network IP, e.g. `http://192.168.1.100:3000/api`, so physical mobile devices can connect)._
+   _(Replace `<YOUR_LOCAL_IP>` with your computer's LAN IP address, e.g., `http://192.168.1.100:3000/api`, so mobile devices running Expo Go can communicate with the server)._
 
-3. **Start Expo Development Server**:
+3. **Start the Expo App**:
 
    ```bash
    npx expo start -c
    ```
 
-4. **Run on Device / Simulator**:
-   - **Android**: Press `a` or scan QR code in **Expo Go**.
-   - **iOS**: Press `i` (macOS) or scan QR code with iOS Camera.
-   - **Web**: Press `w` to open in browser.
+4. **Launch on Device / Simulator**:
+   - **Android**: Scan the terminal QR code in the **Expo Go** app or press `a`.
+   - **iOS**: Scan the QR code using the iOS Camera app or press `i`.
+   - **Web**: Press `w` to run in the web browser.
 
 ---
 
-## 🔍 Validation & Verification Engine
+## 🛡️ Verification & Multi-Layer Safety Engine
 
-Nutrio AI executes a multi-point scoring verification on every generated meal plan:
+Every generated meal plan passes through automated multi-point verification:
 
 ```text
-[Gemini AI Output] ──▶ [Schema Check] ──▶ [Allergy Filter] ──▶ [Diet Validator] ──▶ [Calorie & Macro Match] ──▶ [Budget Check] ──▶ [Quality Score (0-100)]
+[Gemini AI Response]
+      │
+      ▼
+[Schema & Parsing Guard]
+      │
+      ▼
+[Allergen & Exclusion Filter] ──▶ (Strict string & token matching)
+      │
+      ▼
+[Diet Compliance Check] ────────▶ (Enforces vegetarian/vegan boundaries)
+      │
+      ▼
+[Calorie & Macro Matching] ─────▶ (Validates daily target within ±10% window)
+      │
+      ▼
+[Budget Tracking Engine] ───────▶ (Validates cost in LKR against daily budget)
+      │
+      ▼
+[Composite Quality Score] ──────▶ (Scores 0–100% based on nutrition, safety & variety)
 ```
-
-- **Allergy Check**: Verifies ingredient strings against allergy blacklist with strict string matching and normalization.
-- **Diet Compliance**: Validates vegetarian/vegan rules (flags meat, fish, eggs if restricted).
-- **Calorie Tolerance**: Compares plan average against user target ($\pm 10\%$ acceptable window).
-- **Quality Score Calculation**: Weighted composite score based on nutrition (30%), constraint safety (30%), budget (15%), diversity (15%), and preferences (10%).
 
 ---

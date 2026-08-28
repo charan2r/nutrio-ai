@@ -283,9 +283,13 @@ export class MealPlanValidationService {
           .join(' ');
         const tags = (meal.dietTags || []).map((t) => t.toLowerCase());
 
+        // Replace plant-based meat substitutes so generic 'meat' does not trigger false positive
+        const cleanName = mealName.replace(/soya\s*meat|soy\s*meat|mock\s*meat/g, 'soya');
+        const cleanIngredients = ingredientsText.replace(/soya\s*meat|soy\s*meat|mock\s*meat/g, 'soya');
+
         if (dietType === 'vegetarian') {
           const hasMeat = NON_VEG_KEYWORDS.some(
-            (kw) => mealName.includes(kw) || ingredientsText.includes(kw),
+            (kw) => cleanName.includes(kw) || cleanIngredients.includes(kw),
           );
           const taggedNonVeg = tags.includes('non-veg') || tags.includes('non-vegetarian');
           if (hasMeat || taggedNonVeg) {
@@ -298,7 +302,7 @@ export class MealPlanValidationService {
           }
         } else if (dietType === 'vegan') {
           const hasAnimalProduct = NON_VEGAN_KEYWORDS.some(
-            (kw) => mealName.includes(kw) || ingredientsText.includes(kw),
+            (kw) => cleanName.includes(kw) || cleanIngredients.includes(kw),
           );
           const taggedNonVegan =
             tags.includes('non-veg') ||
